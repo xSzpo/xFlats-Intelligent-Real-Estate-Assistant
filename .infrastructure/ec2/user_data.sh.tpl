@@ -29,45 +29,40 @@ else
 fi
 
 # 6) Wait for that device to appear
-while [ ! -e "${DEVICE}" ]; do sleep 1; done
+while [ ! -e "$${DEVICE}" ]; do sleep 1; done
 
 # 7) Format, mount, persist
-mkfs -t ext4 "${DEVICE}"
+mkfs -t ext4 "$${DEVICE}"
 mkdir -p /mnt/chroma
-mount "${DEVICE}" /mnt/chroma
-echo "${DEVICE} /mnt/chroma ext4 defaults,nofail 0 2" >>/etc/fstab
+mount "$${DEVICE}" /mnt/chroma
+echo "$${DEVICE} /mnt/chroma ext4 defaults,nofail 0 2" >>/etc/fstab
 chown ubuntu:ubuntu /mnt/chroma
 
-# 8) Write Chroma env file
-cat <<EOT >/home/ubuntu/.env
-CHROMA_SERVER_VERSION=1.0.5
-EOT
-chown ubuntu:ubuntu /home/ubuntu/.env
+# 8) Write Chroma env file with authentication settings
+# skip
 
 # 9) Write docker-compose.yml
 cat <<-'EOC' >/home/ubuntu/docker-compose.yml
-version: "3.9"
-
-services:
-  server:
-    image: ghcr.io/chroma-core/chroma:1.0.5
-    ports:
-      - "8000:8000"
-    volumes:
-      - /mnt/chroma:/index_data
-    restart: always
-    env_file:
-      - /home/ubuntu/.env
-    networks:
-      - net
-
 networks:
   net:
     driver: bridge
-
-volumes:
-  index_data:
-  backups:
+services:
+  chromadb:
+    image: chromadb/chroma:latest
+    volumes:
+      - /mnt/chroma:/chroma/chroma
+    restart: always
+    environment:
+      - IS_PERSISTENT=TRUE
+      - PERSIST_DIRECTORY=/chroma/chroma # this is the default path, change it as needed
+      - ANONYMIZED_TELEMETRY=$${ANONYMIZED_TELEMETRY:-TRUE}
+      - CHROMA_SERVER_AUTHN_CREDENTIALS="${chroma_token}"
+      - CHROMA_AUTH_TOKEN_TRANSPORT_HEADER="Authorization"
+      - CHROMA_SERVER_AUTHN_PROVIDER=chromadb.auth.token_authn.TokenAuthenticationServerProvider
+    ports:
+      - 8000:8000
+    networks:
+      - net
 EOC
 chown ubuntu:ubuntu /home/ubuntu/docker-compose.yml
 

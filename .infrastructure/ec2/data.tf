@@ -9,3 +9,12 @@ data "terraform_remote_state" "iam" {
     region = "eu-central-1"
   }
 }
+
+data "terraform_remote_state" "secrets" {
+  backend = "s3"
+  config = {
+    bucket = "terraform-274181059559"
+    key    = "state/secrets.tfstate"
+    region = "eu-central-1"
+  }
+}

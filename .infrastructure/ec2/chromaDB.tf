@@ -46,8 +46,9 @@ resource "aws_instance" "chroma_instance" {
     }
   }
 
-  user_data = file("user_data.sh")
-
+  user_data = templatefile("${path.module}/user_data.sh.tpl", {
+    chroma_token = data.terraform_remote_state.secrets.outputs.chromedb_token.token
+  })
   tags = {
     Name = "ChromaDB-Instance"
   }
@@ -64,16 +65,16 @@ resource "aws_ebs_volume" "chroma_data" {
 }
 
 resource "aws_volume_attachment" "chroma_data_attach" {
-  device_name = "/dev/xvdf"
-  volume_id   = aws_ebs_volume.chroma_data.id
-  instance_id = aws_instance.chroma_instance.id
+  device_name  = "/dev/xvdf"
+  volume_id    = aws_ebs_volume.chroma_data.id
+  instance_id  = aws_instance.chroma_instance.id
   force_detach = true
 }
 
 resource "aws_eip" "chroma_ip" {
-  instance    = aws_instance.chroma_instance.id
-  domain      = "vpc"
-  depends_on  = [aws_instance.chroma_instance]
+  instance   = aws_instance.chroma_instance.id
+  domain     = "vpc"
+  depends_on = [aws_instance.chroma_instance]
 }
 
 output "chroma_public_ip" {
@@ -124,9 +125,9 @@ resource "aws_iam_role_policy_attachment" "backup_role_attachment" {
 }
 
 resource "aws_backup_selection" "chroma_backup_selection" {
-  name          = "chroma-ebs-selection"
-  iam_role_arn  = aws_iam_role.backup_role.arn
-  plan_id       = aws_backup_plan.chroma_backup_plan.id
+  name         = "chroma-ebs-selection"
+  iam_role_arn = aws_iam_role.backup_role.arn
+  plan_id      = aws_backup_plan.chroma_backup_plan.id
 
   resources = [
     aws_ebs_volume.chroma_data.arn
