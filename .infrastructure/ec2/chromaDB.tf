@@ -46,9 +46,7 @@ resource "aws_instance" "chroma_instance" {
     }
   }
 
-  user_data = templatefile("${path.module}/user_data.sh.tpl", {
-    chroma_token = data.terraform_remote_state.secrets.outputs.chromedb_token.token
-  })
+  user_data = file("user_data.sh")
   tags = {
     Name = "ChromaDB-Instance"
   }

@@ -1,14 +1,8 @@
-resource "random_password" "chromedb_token" {
-  length           = 32
-  override_special = "!@#$%*=+"
-  special          = true
-}
-
 resource "aws_secretsmanager_secret" "chromedb" {
-  name = "chromedb-${data.aws_caller_identity.current.account_id}"
+  name = "chrome-db-${data.aws_caller_identity.current.account_id}"
 }
 
-resource "aws_secretsmanager_secret_policy" "chromedb_policy" {
+resource "aws_secretsmanager_secret_policy" "chromedb" {
   secret_arn = aws_secretsmanager_secret.chromedb.arn
 
   policy = jsonencode({
@@ -32,9 +26,9 @@ resource "aws_secretsmanager_secret_policy" "chromedb_policy" {
   })
 }
 
-resource "aws_secretsmanager_secret_version" "chromedb_token" {
+resource "aws_secretsmanager_secret_version" "chromedb" {
   secret_id = aws_secretsmanager_secret.chromedb.id
   secret_string = jsonencode({
-    TOKEN = random_password.chromedb_token.result
+    IP = aws_eip.chroma_ip.public_ip
   })
 }
