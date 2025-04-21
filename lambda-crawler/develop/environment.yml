@@ -1,0 +1,14 @@
+# run: conda env create --file environment.yml
+name: lambda-crawler
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+    - google-genai==1.7.0
+    - google-api-core
+    - osmnx
+    - chromadb
+    - boto3

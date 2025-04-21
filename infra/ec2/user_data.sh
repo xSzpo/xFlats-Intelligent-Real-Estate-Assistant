@@ -51,7 +51,7 @@ services:
 
     # Persist your data volume
     volumes:
-      - /mnt/chroma:/chroma/chroma
+      - /mnt/chroma:/data
 
     # Expose the HTTP port
     ports:
@@ -62,7 +62,7 @@ services:
 
     environment:
       - IS_PERSISTENT=TRUE
-      - PERSIST_DIRECTORY=/chroma/chroma
+      - PERSIST_DIRECTORY=/data
 EOC
 
 chown ubuntu:ubuntu /home/ubuntu/docker-compose.yml
