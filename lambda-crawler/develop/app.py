@@ -5,6 +5,7 @@ import re
 import statistics
 from urllib.parse import urljoin, urlparse
 from urllib.request import urlopen
+import time
 
 import boto3
 import chromadb
@@ -197,34 +198,73 @@ def fix_json(json_result: str) -> list[dict]:
     return [json.loads(match) for match in matches]
 
 
-def get_public_transport_station(lat: float, long: float, dist: int = 700) -> str:
+def get_public_transport_stations(
+    lat: float, lon: float, dist: int = 700
+) -> tuple[dict, str]:
     """
-    Retrieve public transport station information within a specified distance of a location.
+    Retrieve names of nearby public transport stations grouped by mode.
 
     Parameters:
         lat (float): Latitude coordinate.
-        long (float): Longitude coordinate.
+        lon (float): Longitude coordinate.
         dist (int): Search radius in meters (default is 700).
 
     Returns:
-        str: A semicolon-separated string of public transport stations, or an empty string if an error occurs.
+        Dictionary with five text fields (station names joined by comma) for:
+        ferry_terminals, light_rails, subways, bus_stations, trains.
+        If no station is found, returns "no_name" for that mode.
     """
     try:
-        point = (lat, long)
+        point = (lat, lon)
         tags = {"public_transport": "station"}
+        # Fetch all relevant public transport stations
         pois = features_from_point(point, tags, dist=dist).reset_index()
-        cols = ["name", "station", "amenity"]
-        pois = pois.loc[:, pois.columns.isin(cols)].to_dict(orient="split")["data"]
-        poi_set = {", ".join(filter(lambda x: x == x, item)) for item in pois}
-        return "; ".join(poi_set)
+        if "amenity" in pois:
+            pois.fillna({"station": pois["amenity"]}, inplace=True)
+
+        def extract_names(column: str, value: str) -> str:
+            """Extract unique names where column == value, joined into text."""
+            if column not in pois.columns:
+                return []
+            filtered = pois[pois[column] == value]["name"].dropna().unique()
+            return filtered
+
+        stations = {
+            "ferry_terminals": extract_names("station", "ferry_terminal"),
+            "light_rails": extract_names("station", "light_rail"),
+            "subways": extract_names("station", "subway"),
+            "bus_stations": extract_names("station", "bus_station"),
+            "trains": extract_names("station", "train"),
+        }
+        text = ""
+
+        for station in stations:
+            if stations[station].size > 0:
+                text += "; ".join([f"{station}:{i}" for i in stations[station]])
+                text += "; "
+                stations[station] = True
+            else:
+                stations[station] = False
+
+        stations.update({"public_transport_text": text})
+
+        return stations
+
     except Exception as e:
         print(e)
-        return ""
+        return {
+            "ferry_terminals": False,
+            "light_rails": False,
+            "subways": False,
+            "bus_stations": False,
+            "trains": False,
+            "public_transport_text": "",
+        }
 
 
 def summarize_webpage(
     url: str, prompt: str, example: str, max_tokens: int = 8192
-) -> list[dict]:
+) -> list[dict] | None:
     """
     Extract and process property listings from a given webpage URL.
 
@@ -262,14 +302,17 @@ def summarize_webpage(
     )
     results = fix_json(response.text)
 
-    # Enrich each offer with public transport station data.
-    for offer in results:
-        offer["public_transport_station_up_to_700m"] = get_public_transport_station(
-            offer["lat"], offer["long"]
-        )
-        offer["create_date"] = datetime.datetime.today().isoformat()
-        offer["id"] = hashlib.shake_128(offer["url"].encode()).hexdigest(8)
-    return results
+    if results:
+        for offer in results:
+            if bool(offer.get("url")):
+                offer.update(
+                    get_public_transport_stations(offer.get("lat"), offer.get("long"))
+                )
+                offer["create_date"] = datetime.datetime.today().isoformat()
+                offer["id"] = hashlib.shake_128(offer.get("url").encode()).hexdigest(8)
+        return results
+    else:
+        return None
 
 
 def offer_to_text(offer: dict) -> str:
@@ -288,7 +331,7 @@ def offer_to_text(offer: dict) -> str:
         f"Rooms: {offer.get('number_of_rooms', '')}. "
         f"Year built: {offer.get('year_built', '')}. "
         f"Energy label: {offer.get('energy_label', '')}. "
-        f"Nearby transit (up to 700 m): {offer.get('public_transport_station_up_to_700m', '')}."
+        f"Nearby transit (up to 700 m): {offer.get('public_transport_text', '')}."
     )
 
 
@@ -350,7 +393,7 @@ def add_offers_to_db(collection, offers: list[dict], batch_size: int = 100):
         batch_size (int): Number of documents to add in each batch.
     """
     documents = [offer_to_text(offer) for offer in offers]
-    ids = [offer["id"] for offer in offers]
+    ids = [offer.get("id") for offer in offers]
     metadatas = offers
 
     for i in range(0, len(documents), batch_size):
@@ -378,8 +421,8 @@ def get_price_point(offer: dict, collection: any) -> float:
     emb_results = collection.query(query_texts=[offer_to_text(offer)], n_results=5)[
         "metadatas"
     ][0]
-    avg_price = statistics.mean([item["price"] for item in emb_results])
-    return offer["price"] / avg_price if avg_price != 0 else 0.0
+    avg_price = statistics.mean([item.get("price") for item in emb_results])
+    return offer.get("price") / avg_price if avg_price != 0 else 0.0
 
 
 def get_similar_offers(offer: dict, collection: any) -> str:
@@ -412,15 +455,14 @@ system_instruction_template = (
 
 def main():
     BASE_URL = (
-        "https://www.boligsiden.dk/tilsalg/villa,ejerlejlighed?"
-        "sortAscending=true&priceMax=7000000&polygon=12.626596,55.654896|"
-        "12.641590,55.649906|12.636977,55.665739|12.602806,55.668303|"
-        "12.584355,55.665330|12.585458,55.680916|12.586996,55.694136|"
-        "12.566745,55.704787|12.556173,55.707496|12.535566,55.708713|"
-        "12.523383,55.700403|12.513564,55.690885|12.530509,55.677542|"
-        "12.527120,55.667137|12.538516,55.662200|12.545194,55.656305|"
-        "12.560256,55.652160|12.573540,55.658583|12.590841,55.649690|"
-        "12.602053,55.668091|12.622655,55.667008|12.626596,55.654896&sortBy=timeOnMarket&page={page}"
+        "https://www.boligsiden.dk/tilsalg/villa,ejerlejlighed?sortAscending=true"
+        "&mapBounds=7.780294,54.501948,15.330305,57.896401&priceMax=7000000"
+        "&polygon=12.555001,55.714439|12.544964,55.711152|12.535566,55.708713|12.523383,55.700403|"
+        "12.513564,55.690885|12.507604,55.674192|12.508089,55.656840|12.521769,55.648585|"
+        "12.534702,55.642731|12.564876,55.614388|12.591917,55.614270|12.599055,55.649692|"
+        "12.605518,55.649361|12.615303,55.649093|12.628699,55.649335|12.641590,55.649906|"
+        "12.636977,55.665739|12.626008,55.676732|12.636641,55.686489|12.654036,55.720127|"
+        "12.602392,55.730897|12.555001,55.714439&page={page}"
     )
 
     print("Starting data collection process")
@@ -433,19 +475,38 @@ def main():
 
     # Collect historical listings for context
     all_results = []
-    # Process pages 2 to 5 for historical offers
-    for page in range(1, 8):
+
+    MAX_RETRIES = 3  # Number of times to retry a page
+
+    for page in range(1, 3):
         print(f"Processing historical listings from page {page}")
-        page_url = BASE_URL.format(page=page)
-        offers = summarize_webpage(page_url, PROMPT_TEMPLATE, EXAMPLE_TEXT)
-        all_results.extend(offers)
+        retries = 0
+        success = False
+
+        while retries < MAX_RETRIES and not success:
+            page_url = BASE_URL.format(page=page)
+            try:
+                offers = summarize_webpage(page_url, PROMPT_TEMPLATE, EXAMPLE_TEXT)
+            except BaseException:
+                offers = []
+
+            if len(offers) > 5:
+                all_results.extend(offers)
+                success = True
+            else:
+                retries += 1
+                time.sleep(retries)
+                print(f"Error retrieving page {page}, retry {retries}/{MAX_RETRIES}")
+
+        if not success:
+            print(f"Failed to retrieve page {page} after {MAX_RETRIES} retries.")
 
     print(f"I have total {len(all_results)} historical listings")
     seen = set()
     all_results_unique = []
     for item in all_results:
-        if item["id"] not in seen:
-            seen.add(item["id"])
+        if item.get("id") not in seen:
+            seen.add(item.get("id"))
             all_results_unique.append(item)
     print(f"I have total {len(all_results_unique)} unique historical listings")
 
