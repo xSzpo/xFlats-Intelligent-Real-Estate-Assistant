@@ -1,3 +1,6 @@
+.DS_Store
+__pycache__
+.ipynb_checkpoints
 .terraform
 cache
 lambda-crawler/.aws-sam

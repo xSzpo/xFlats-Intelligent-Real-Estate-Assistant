@@ -5,7 +5,8 @@ import re
 import statistics
 from urllib.parse import urljoin, urlparse
 from urllib.request import urlopen
-import time
+from pydantic import BaseModel
+import re
 
 import boto3
 import chromadb
@@ -15,7 +16,6 @@ from google import genai
 from google.api_core import retry
 from google.genai import types
 from osmnx import features_from_point
-from pydantic import BaseModel
 
 
 def get_secret(secret_id, key=None, profile_name=None):
@@ -28,13 +28,6 @@ def get_secret(secret_id, key=None, profile_name=None):
         return secret_dict[key]
     else:
         return secret_dict
-
-
-client = genai.Client(
-    api_key=get_secret(
-        secret_id="gemini-274181059559", key="GOOGLE_API_KEY", profile_name="priv"
-    )
-)
 
 
 def check_crawl_permission(target_page: str) -> bool:
@@ -110,30 +103,6 @@ def fetch_html(url: str) -> str:
     raise Exception(f"Failed to retrieve page. Status code: {response.status_code}")
 
 
-class Offers(BaseModel):
-    """
-    Data model representing a property offer.
-    """
-
-    address: str
-    lat: float
-    long: float
-    price: int
-    area_m2: int
-    number_of_rooms: int
-    year_built: int
-    energy_label: str
-    url: str
-
-
-class ListOfOffers(BaseModel):
-    """
-    Data model representing a list of property offers.
-    """
-
-    offers: list[Offers]
-
-
 def is_retriable(e: Exception) -> bool:
     """
     Determine if an exception should trigger a retry.
@@ -145,41 +114,6 @@ def is_retriable(e: Exception) -> bool:
         bool: True if the exception is retriable (API error codes 429 or 503), otherwise False.
     """
     return isinstance(e, genai.errors.APIError) and e.code in {429, 503}
-
-
-EXAMPLE_TEXT = """
-EXAMPLE:
-JSON Response:
-```
-[{
-"address": "Ålekistevej 172, 2720 Vanløse",
-"lat": 55.671677,
-"long":12.553303,
-"price": 2798000,
-"area_m2": 87,
-"number_of_rooms":3,
-"year_built": 1988,
-"energy_label": "C",
-"url": "https://www.boligsiden.dk/adresse/aalekistevej-172-3-31-2720-vanloese-01018672_172__3__31",
-}
-]
-```
-"""
-
-
-PROMPT_TEMPLATE = """
-You are an expert in extracting property listings. Based on the HTML below from a real estate 
-webpage, please extract all apartment offers into a valid JSON list using fewer than {max_tokens} 
-tokens. The offers are in Danish; please translate the data into English. 
-
-Please generate the URL of the offers using the pattern 'https://www.boligsiden.dk/adresse/<partial_url>', 
-e.g. 'https://www.boligsiden.dk/adresse/aalekistevej-172-3-31-2720-vanloese-01018672_172__3__31'
-webpage:\n\n
-
-{html_content}
-
-Output:
-"""
 
 
 def fix_json(json_result: str) -> list[dict]:
@@ -263,7 +197,11 @@ def get_public_transport_stations(
 
 
 def summarize_webpage(
-    url: str, prompt: str, example: str, max_tokens: int = 8192
+    url: str,
+    prompt: str,
+    example: str,
+    client: any,
+    max_tokens: int = 8192,
 ) -> list[dict] | None:
     """
     Extract and process property listings from a given webpage URL.
@@ -285,6 +223,28 @@ def summarize_webpage(
     """
     if not check_crawl_permission(url):
         raise ValueError(f"Crawling not permitted: {url}")
+
+    class Offers(BaseModel):
+        """
+        Data model representing a property offer.
+        """
+
+        address: str
+        lat: float
+        long: float
+        price: int
+        area_m2: int
+        number_of_rooms: int
+        year_built: int
+        energy_label: str
+        url: str
+
+    class ListOfOffers(BaseModel):
+        """
+        Data model representing a list of property offers.
+        """
+
+        offers: list[Offers]
 
     html_content = fetch_html(url)
     response = client.models.generate_content(
@@ -340,6 +300,10 @@ class GeminiEmbeddingFunction(EmbeddingFunction):
     Custom embedding function for generating text embeddings via the Gemini API.
     """
 
+    def __init__(self, client, *args, **kwargs):
+        self.client = client
+        super().__init__(*args, **kwargs)
+
     document_mode: bool = True
 
     @retry.Retry(predicate=is_retriable)
@@ -354,7 +318,7 @@ class GeminiEmbeddingFunction(EmbeddingFunction):
             Embeddings: A list of embedding vectors.
         """
         task_type = "retrieval_document" if self.document_mode else "retrieval_query"
-        response = client.models.embed_content(
+        response = self.client.models.embed_content(
             model="models/text-embedding-004",
             contents=input,
             config=types.EmbedContentConfig(task_type=task_type),
@@ -362,7 +326,7 @@ class GeminiEmbeddingFunction(EmbeddingFunction):
         return [e.values for e in response.embeddings]
 
 
-def setup_vector_database(ip=None, port=8000):
+def setup_vector_database(ip: int, client: any, port=8000):
     """
     Initialize and set up ChromaDB for storing property embeddings.
 
@@ -370,7 +334,7 @@ def setup_vector_database(ip=None, port=8000):
         object: The initialized ChromaDB collection.
     """
     DB_NAME = "real-estate-offers"
-    embed_fn = GeminiEmbeddingFunction()
+    embed_fn = GeminiEmbeddingFunction(client)
     embed_fn.document_mode = True
     if ip:
         chroma_client = chromadb.HttpClient(host=ip, port=port)
@@ -404,7 +368,7 @@ def add_offers_to_db(collection, offers: list[dict], batch_size: int = 100):
         print(f"Added batch {i // batch_size + 1} with {len(batch_docs)} documents.")
 
 
-def get_price_point(offer: dict, collection: any) -> float:
+def get_price_point(offer: dict, collection: any, n_results=5) -> float:
     """
     Calculate a price point for the offer based on similar offers in the collection.
 
@@ -414,13 +378,19 @@ def get_price_point(offer: dict, collection: any) -> float:
     Parameters:
         offer (dict): The property offer.
         collection (any): The ChromaDB collection.
+        n_results (int): number of similar offers to retrieve.
 
     Returns:
         float: The price ratio for the offer.
     """
-    emb_results = collection.query(query_texts=[offer_to_text(offer)], n_results=5)[
-        "metadatas"
-    ][0]
+    now = datetime.datetime.now()
+
+    emb_results = collection.query(
+        include=["metadatas"],
+        where={"create_date": {"$gt": (now - datetime.timedelta(days=90)).timestamp()}},
+        query_texts=[offer_to_text(offer)],
+        n_results=n_results,
+    )["metadatas"][0]
     avg_price = statistics.mean([item.get("price") for item in emb_results])
     return offer.get("price") / avg_price if avg_price != 0 else 0.0
 
@@ -440,80 +410,32 @@ def get_similar_offers(offer: dict, collection: any) -> str:
     return f"Offer:\n\n{offer}\n\nSimilar offers:\n\n{emb_results}"
 
 
-system_instruction_template = (
-    "You are a helpful and informative bot that presents the user with the three best apartment sale offers "
-    "of the day in Copenhagen. The apartments were chosen because their price was the lowest. "
-    "We received five similar offers, calculated the average, and then divided the apartment price by the average. "
-    "Please provide the best offers by including the address, price, size, number  of rooms, year built, public transport "
-    "options, and the URL for each listing, along with a description of how each compares to similar offers."
-    "Use only the information provided in the context.\n\n"
-    "Best offers #1: {best_offer_1}\n\n"
-    "Best offers #2: {best_offer_2}\n\n"
-    "Best offers #3: {best_offer_3}\n\n"
-)
+def create_offer_text(offer_dict) -> str:
+    """
+    Build a multi-line description of a property offer, optionally extracting
+    subway names from the raw transport text.
 
+    Extracts any occurrences of 'subways:...;' if `offer_dict['subways']` is True,
+    joins them with commas, and injects all values into the template.
 
-def main():
-    BASE_URL = (
-        "https://www.boligsiden.dk/tilsalg/villa,ejerlejlighed?sortAscending=true"
-        "&mapBounds=7.780294,54.501948,15.330305,57.896401&priceMax=7000000"
-        "&polygon=12.555001,55.714439|12.544964,55.711152|12.535566,55.708713|12.523383,55.700403|"
-        "12.513564,55.690885|12.507604,55.674192|12.508089,55.656840|12.521769,55.648585|"
-        "12.534702,55.642731|12.564876,55.614388|12.591917,55.614270|12.599055,55.649692|"
-        "12.605518,55.649361|12.615303,55.649093|12.628699,55.649335|12.641590,55.649906|"
-        "12.636977,55.665739|12.626008,55.676732|12.636641,55.686489|12.654036,55.720127|"
-        "12.602392,55.730897|12.555001,55.714439&page={page}"
-    )
+    Returns:
+        A formatted multi-line string including all fields and the
+        comma-separated list of subways (if any).
+    """
+    if offer_dict.get("subways", False):
+        pattern = re.compile(r"(?<=subways:)([^;]+)(?=;)")
+        subways = pattern.findall(offer_dict["public_transport_text"])
+        subways_txt = ", ".join(subways)
+    else:
+        subways_txt = ""
 
-    print("Starting data collection process")
+    offer_txt = """
+Address: {address}
+Size: {area_m2} m2, Rooms: {number_of_rooms}, Year: {year_built}, Energy: {energy_label}
+Price: {price:,} DKK ({price_point:.2%})
+Subway(s): {subways_txt}
+Url: {url}
+Public transport: {public_transport_text}
+    """.format(**offer_dict, subways_txt=subways_txt)
 
-    # Set up vector database
-    collection = setup_vector_database(
-        ip=get_secret(secret_id="chrome-db-274181059559", key="IP", profile_name="priv")
-    )
-    print("Vector database initialized")
-
-    # Collect historical listings for context
-    all_results = []
-
-    MAX_RETRIES = 3  # Number of times to retry a page
-
-    for page in range(1, 4):
-        print(f"Processing historical listings from page {page}")
-        retries = 0
-        success = False
-
-        while retries < MAX_RETRIES and not success:
-            page_url = BASE_URL.format(page=page)
-            try:
-                offers = summarize_webpage(page_url, PROMPT_TEMPLATE, EXAMPLE_TEXT)
-            except BaseException:
-                offers = []
-
-            if len(offers) > 5:
-                all_results.extend(offers)
-                success = True
-            else:
-                retries += 1
-                time.sleep(retries)
-                print(f"Error retrieving page {page}, retry {retries}/{MAX_RETRIES}")
-
-        if not success:
-            print(f"Failed to retrieve page {page} after {MAX_RETRIES} retries.")
-
-    print(f"I have total {len(all_results)} historical listings")
-    seen = set()
-    all_results_unique = []
-    for item in all_results:
-        if item.get("id") not in seen:
-            seen.add(item.get("id"))
-            all_results_unique.append(item)
-    print(f"I have total {len(all_results_unique)} unique historical listings")
-
-    # Add historical listings to vector database
-    print(f"Adding {len(all_results_unique)} historical listings to vector database")
-    add_offers_to_db(collection, all_results_unique)
-
-
-if __name__ == "__main__":
-    main()
+    return offer_txt
