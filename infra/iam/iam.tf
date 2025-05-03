@@ -27,7 +27,16 @@ resource "aws_iam_policy" "ec2_chroma_policy" {
       {
         Effect = "Allow",
         Action = [
-          "s3:ListAllMyBuckets"
+          "s3:*",
+          "ecr:DescribeImages",
+          "ecr:DescribeRepositories",
+          "ecr:GetAuthorizationToken",
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:PutImage",
+          "secretsmanager:BatchGetSecretValue",
+          "secretsmanager:DescribeSecret",
+          "secretsmanager:GetSecretValue",
+          "secretsmanager:List*",
         ],
         Resource = [
           "*"
