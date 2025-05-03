@@ -1,1 +1,3 @@
 .terraform
+cache
+lambda-crawler/.aws-sam

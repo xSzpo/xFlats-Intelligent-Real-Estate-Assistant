@@ -308,7 +308,7 @@ def summarize_webpage(
                 offer.update(
                     get_public_transport_stations(offer.get("lat"), offer.get("long"))
                 )
-                offer["create_date"] = datetime.datetime.today().isoformat()
+                offer["create_date"] = datetime.datetime.today().timestamp()
                 offer["id"] = hashlib.shake_128(offer.get("url").encode()).hexdigest(8)
         return results
     else:
@@ -478,7 +478,7 @@ def main():
 
     MAX_RETRIES = 3  # Number of times to retry a page
 
-    for page in range(1, 3):
+    for page in range(1, 4):
         print(f"Processing historical listings from page {page}")
         retries = 0
         success = False
