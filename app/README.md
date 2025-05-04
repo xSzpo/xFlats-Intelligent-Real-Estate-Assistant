@@ -1,0 +1,26 @@
+```bash
+AWS_PROFILE=priv python -m main
+```
+
+```bash
+
+AWS_PROFILE=priv 
+aws ecr get-login-password \
+  --region eu-central-1 \
+| docker login \
+    --username AWS \
+    --password-stdin 274181059559.dkr.ecr.eu-central-1.amazonaws.com
+
+docker buildx create --use
+
+AWS_PROFILE=priv docker buildx build \
+  --platform linux/amd64,linux/arm64 \
+  --push \
+  -t 274181059559.dkr.ecr.eu-central-1.amazonaws.com/xflats-crawler:latest \
+  .
+
+docker pull --platform linux/amd64 274181059559.dkr.ecr.eu-central-1.amazonaws.com/xflats-crawler:latest
+
+docker run --platform linux/amd64 -d --name property-bot 274181059559.dkr.ecr.eu-central-1.amazonaws.com/xflats-crawler:latest
+
+```

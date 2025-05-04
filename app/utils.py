@@ -5,8 +5,6 @@ import re
 import statistics
 from urllib.parse import urljoin, urlparse
 from urllib.request import urlopen
-from pydantic import BaseModel
-import re
 
 import boto3
 import chromadb
@@ -16,6 +14,7 @@ from google import genai
 from google.api_core import retry
 from google.genai import types
 from osmnx import features_from_point
+from pydantic import BaseModel
 
 
 def get_secret(secret_id, key=None, profile_name=None):
@@ -435,7 +434,6 @@ Size: {area_m2} m2, Rooms: {number_of_rooms}, Year: {year_built}, Energy: {energ
 Price: {price:,} DKK ({price_point:.2%})
 Subway(s): {subways_txt}
 Url: {url}
-Public transport: {public_transport_text}
     """.format(**offer_dict, subways_txt=subways_txt)
 
     return offer_txt

@@ -1,36 +1,41 @@
 import datetime
+import os
 import time
+
 import requests
 from google import genai
-
 from utils import (
-    get_secret,
-    summarize_webpage,
-    setup_vector_database,
     add_offers_to_db,
-    get_price_point,
     create_offer_text,
+    get_price_point,
+    get_secret,
+    setup_vector_database,
+    summarize_webpage,
 )
 
 # bot page
 # https://api.telegram.org/bot{telegram_token}/getUpdates
 
-profile_name = None
+profile_name = os.getenv("AWS_PROFILE", None)
 
-client = genai.Client(
-    api_key=get_secret(
-        secret_id="gemini-274181059559", key="GOOGLE_API_KEY", profile_name=profile_name
-    )
+
+chromadb_ip = get_secret(
+    secret_id="chrome-db-274181059559", key="IP", profile_name=profile_name
 )
 
 telegram_token = api_key = get_secret(
     secret_id="telegram-274181059559", key="TOKEN", profile_name=profile_name
 )
 
-chat_id = api_key = get_secret(
+telegram_chat_id = api_key = get_secret(
     secret_id="telegram-274181059559", key="CHAT_ID", profile_name=profile_name
 )
 
+genai_api_key = get_secret(
+    secret_id="gemini-274181059559", key="GOOGLE_API_KEY", profile_name=profile_name
+)
+
+client = genai.Client(api_key=genai_api_key)
 
 EXAMPLE_TEXT = """
 EXAMPLE:
@@ -96,9 +101,7 @@ def main():
 
     # Set up vector database
     collection = setup_vector_database(
-        ip=get_secret(
-            secret_id="chrome-db-274181059559", key="IP", profile_name="priv"
-        ),
+        ip=chromadb_ip,
         client=client,
     )
     print("Vector database initialized")
@@ -108,7 +111,7 @@ def main():
 
     MAX_RETRIES = 3  # Number of times to retry a page
     NUMBER_OF_PAGES_TO_OPEN = 3
-    GET_OFFERS_FROM_X_LAST_MIN = 10
+    GET_OFFERS_FROM_X_LAST_MIN = 5
 
     for page in range(1, NUMBER_OF_PAGES_TO_OPEN):
         print(f"Processing historical listings from page {page}")
@@ -154,26 +157,40 @@ def main():
     newest_results = collection.get(
         include=["metadatas"],
         where={
-            "create_date": {
-                "$gt": (
-                    now - datetime.timedelta(minutes=GET_OFFERS_FROM_X_LAST_MIN)
-                ).timestamp()
-            }
+            "$and": [
+                {
+                    "create_date": {
+                        "$gt": (
+                            now - datetime.timedelta(minutes=GET_OFFERS_FROM_X_LAST_MIN)
+                        ).timestamp()
+                    }
+                },
+                {"subways": {"$eq": True}},
+                {"number_of_rooms": {"$gte": 3}},
+            ]
         },
     )["metadatas"]
 
-    for offer in newest_results:
-        offer["price_point"] = get_price_point(offer, collection)
-
-    newest_results.sort(key=lambda x: x.get("price_point", 0))
-
-    for offer in newest_results:
-        offer_txt = create_offer_text(offer)
-        url = (
-            f"https://api.telegram.org/bot{telegram_token}/"
-            f"sendMessage?chat_id={chat_id}&text={offer_txt}"
+    if newest_results:
+        print(
+            f"Number of apartment listings to share on Telegram: {len(newest_results)}"
         )
-        requests.get(url).json()
+
+        for offer in newest_results:
+            offer["price_point"] = get_price_point(offer, collection)
+
+        newest_results.sort(key=lambda x: x.get("price_point", 0))
+
+        for offer in newest_results:
+            offer_txt = create_offer_text(offer)
+            url = (
+                f"https://api.telegram.org/bot{telegram_token}/"
+                f"sendMessage?chat_id={telegram_chat_id}&text={offer_txt}"
+            )
+            requests.get(url).json()
+
+    else:
+        print("There are no apartment listings to share on Telegram.")
 
 
 if __name__ == "__main__":

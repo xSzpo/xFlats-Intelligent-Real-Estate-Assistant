@@ -33,6 +33,7 @@ resource "aws_iam_policy" "ec2_chroma_policy" {
           "ecr:GetAuthorizationToken",
           "ecr:GetDownloadUrlForLayer",
           "ecr:PutImage",
+          "ecr:BatchGetImage",
           "secretsmanager:BatchGetSecretValue",
           "secretsmanager:DescribeSecret",
           "secretsmanager:GetSecretValue",

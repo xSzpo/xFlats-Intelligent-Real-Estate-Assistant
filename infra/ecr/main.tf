@@ -13,12 +13,12 @@ terraform {
 }
 
 
-resource "aws_ecr_repository" "xflats" {
-  name = "${data.aws_caller_identity.current.account_id}-xflats"
+resource "aws_ecr_repository" "xflats_crawler" {
+  name = "xflats-crawler"
 }
 
-resource "aws_ecr_lifecycle_policy" "xflats" {
-  repository = aws_ecr_repository.xflats.name
+resource "aws_ecr_lifecycle_policy" "xflats_crawler" {
+  repository = aws_ecr_repository.xflats_crawler.name
 
   policy = jsonencode({
     rules = [

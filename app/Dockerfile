@@ -1,33 +1,25 @@
-# docker build -t property-bot .
-# docker run -d \
-# --name property-bot \
-# -v ~/.aws:/root/.aws:ro \
-# -e AWS_PROFILE=priv \
-# property-bot
-
-# Use an official slim Python image
 FROM python:3.10-slim
 
-# Install cron
+# 1) Install cron
 RUN apt-get update && \
     apt-get install -y --no-install-recommends cron && \
     rm -rf /var/lib/apt/lists/*
 
-# Set working directory
+# 2) Install your app
 WORKDIR /app
-
-# Copy and install Python dependencies
-COPY requirements.txt .
+COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy only .py files from the project root
 COPY *.py ./
 
-# Add a cron job: run main.py every 15 minutes and log output
-RUN echo "*/15 * * * * root python /app/main.py >> /var/log/cron.log 2>&1" \
-    > /etc/cron.d/property-bot-cron && \
-    chmod 0644 /etc/cron.d/property-bot-cron && \
-    crontab /etc/cron.d/property-bot-cron
+# 3) Create the log file (so cron can write to it)
+RUN touch /var/log/cron.log
 
-# Ensure cron runs in foreground (so container doesn’t exit)
+# 4) Drop a system‐cron file into /etc/cron.d
+#    - it must include the 'root' user field
+#    - use the absolute path to python3
+RUN echo "*/15 * * * * root /usr/local/bin/python3 /app/main.py >> /var/log/cron.log 2>&1" \
+    > /etc/cron.d/property-bot-cron && \
+    chmod 0644 /etc/cron.d/property-bot-cron
+
+# 5) Run cron in the foreground
 CMD ["cron", "-f"]
