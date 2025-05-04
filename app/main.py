@@ -16,7 +16,7 @@ from utils import (
 # bot page
 # https://api.telegram.org/bot{telegram_token}/getUpdates
 
-profile_name = os.getenv("AWS_PROFILE", None)
+profile_name = "priv"
 
 
 chromadb_ip = os.getenv("CHROMADB_IP", "chromadb")
@@ -108,7 +108,7 @@ def main():
     all_results = []
 
     MAX_RETRIES = 3  # Number of times to retry a page
-    NUMBER_OF_PAGES_TO_OPEN = 2
+    NUMBER_OF_PAGES_TO_OPEN = int(os.getenv("NUMBER_OF_PAGES_TO_OPEN", 2))
     GET_OFFERS_FROM_X_LAST_MIN = 5
 
     for page in range(1, NUMBER_OF_PAGES_TO_OPEN):
@@ -169,26 +169,26 @@ def main():
         },
     )["metadatas"]
 
-    if newest_results:
-        print(
-            f"Number of apartment listings to share on Telegram: {len(newest_results)}"
-        )
+    # if newest_results:
+    #     print(
+    #         f"Number of apartment listings to share on Telegram: {len(newest_results)}"
+    #     )
 
-        for offer in newest_results:
-            offer["price_point"] = get_price_point(offer, collection)
+    #     for offer in newest_results:
+    #         offer["price_point"] = get_price_point(offer, collection)
 
-        newest_results.sort(key=lambda x: x.get("price_point", 0))
+    #     newest_results.sort(key=lambda x: x.get("price_point", 0))
 
-        for offer in newest_results:
-            offer_txt = create_offer_text(offer)
-            url = (
-                f"https://api.telegram.org/bot{telegram_token}/"
-                f"sendMessage?chat_id={telegram_chat_id}&text={offer_txt}"
-            )
-            requests.get(url).json()
+    #     for offer in newest_results:
+    #         offer_txt = create_offer_text(offer)
+    #         url = (
+    #             f"https://api.telegram.org/bot{telegram_token}/"
+    #             f"sendMessage?chat_id={telegram_chat_id}&text={offer_txt}"
+    #         )
+    #         requests.get(url).json()
 
-    else:
-        print("There are no apartment listings to share on Telegram.")
+    # else:
+    #     print("There are no apartment listings to share on Telegram.")
 
 
 if __name__ == "__main__":

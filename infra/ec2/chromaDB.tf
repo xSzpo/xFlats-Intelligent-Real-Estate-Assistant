@@ -33,7 +33,7 @@ resource "aws_security_group" "chroma_sg" {
 
 resource "aws_instance" "chroma_instance" {
   ami                  = "ami-03250b0e01c28d196" // Ubuntu 24.04 LTS
-  instance_type        = "t3.small"
+  instance_type        = "t3.micro"
   key_name             = aws_key_pair.chroma_key.key_name
   security_groups      = [aws_security_group.chroma_sg.name]
   iam_instance_profile = data.terraform_remote_state.iam.outputs.ec2_chroma_instance_profile.name
