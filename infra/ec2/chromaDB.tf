@@ -82,6 +82,7 @@ output "chroma_public_ip" {
 
 resource "aws_backup_vault" "chroma_backup_vault" {
   name = "chroma-backup-vault"
+  force_destroy = true
 }
 
 resource "aws_backup_plan" "chroma_backup_plan" {

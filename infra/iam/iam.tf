@@ -34,6 +34,7 @@ resource "aws_iam_policy" "ec2_chroma_policy" {
           "ecr:GetDownloadUrlForLayer",
           "ecr:PutImage",
           "ecr:BatchGetImage",
+          "ecr:BatchCheckLayerAvailability",
           "secretsmanager:BatchGetSecretValue",
           "secretsmanager:DescribeSecret",
           "secretsmanager:GetSecretValue",

@@ -6,8 +6,16 @@ apt-get update -y
 apt-get upgrade -y
 
 # Install Docker, Git, curl, pip & venv support
-apt-get install -y docker.io git curl python3-pip python3-venv
+apt-get install -y docker.io git curl python3-pip python3-venv unzip
 systemctl enable --now docker
+
+# Install AWS CLI v2 (root privileges already)
+apt-get install -y unzip &&
+  curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" &&
+  unzip awscliv2.zip &&
+  ./aws/install &&
+  rm -rf awscliv2.zip aws &&
+  aws --version
 
 # Add ubuntu user to docker group
 usermod -aG docker ubuntu
@@ -17,6 +25,10 @@ curl -L "https://github.com/docker/compose/releases/latest/download/docker-compo
   -o /usr/local/bin/docker-compose
 chmod +x /usr/local/bin/docker-compose
 ln -sf /usr/local/bin/docker-compose /usr/bin/docker-compose
+
+# Authenticate Docker to ECR
+aws ecr get-login-password --region eu-central-1 |
+  docker login --username AWS --password-stdin 274181059559.dkr.ecr.eu-central-1.amazonaws.com
 
 # Determine the data volume device path
 if ls /dev/nvme1n1 &>/dev/null; then
@@ -63,6 +75,15 @@ services:
     environment:
       - IS_PERSISTENT=TRUE
       - PERSIST_DIRECTORY=/data
+
+  property-bot:
+    image: 274181059559.dkr.ecr.eu-central-1.amazonaws.com/xflats-crawler:latest
+    restart: always
+    networks:
+      - net
+    environment:
+      - AWS_REGION=eu-central-1
+
 EOC
 
 chown ubuntu:ubuntu /home/ubuntu/docker-compose.yml
