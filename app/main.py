@@ -110,7 +110,7 @@ def main():
     all_results = []
 
     MAX_RETRIES = 3  # Number of times to retry a page
-    NUMBER_OF_PAGES_TO_OPEN = 3
+    NUMBER_OF_PAGES_TO_OPEN = 2
     GET_OFFERS_FROM_X_LAST_MIN = 5
 
     for page in range(1, NUMBER_OF_PAGES_TO_OPEN):

@@ -13,11 +13,16 @@ aws ecr get-login-password \
 
 docker buildx create --use
 
+# grab the current Git commit short hash
+GIT_HASH=$(git rev-parse --short HEAD)
+
 AWS_PROFILE=priv docker buildx build \
   --platform linux/amd64,linux/arm64 \
   --push \
   -t 274181059559.dkr.ecr.eu-central-1.amazonaws.com/xflats-crawler:latest \
+  -t 274181059559.dkr.ecr.eu-central-1.amazonaws.com/xflats-crawler:${GIT_HASH} \
   .
+
 
 docker pull --platform linux/amd64 274181059559.dkr.ecr.eu-central-1.amazonaws.com/xflats-crawler:latest
 
