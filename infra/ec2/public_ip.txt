@@ -1,3 +1,14 @@
+resource "aws_eip" "chroma_ip" {
+  instance   = aws_instance.chroma_instance.id
+  domain     = "vpc"
+  depends_on = [aws_instance.chroma_instance]
+}
+
+output "chroma_public_ip" {
+  description = "Elastic IP address of the ChromaDB EC2 instance"
+  value       = aws_eip.chroma_ip.public_ip
+}
+
 resource "aws_secretsmanager_secret" "chromedb" {
   name = "chrome-db-${data.aws_caller_identity.current.account_id}"
 }

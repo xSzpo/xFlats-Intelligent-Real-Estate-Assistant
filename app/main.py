@@ -19,11 +19,7 @@ from utils import (
 profile_name = os.getenv("AWS_PROFILE", None)
 
 
-# chromadb_ip = get_secret(
-#     secret_id="chrome-db-274181059559", key="IP", profile_name=profile_name
-# )
-
-chromadb_ip = "localhost"
+chromadb_ip = os.getenv("CHROMADB_IP", "chromadb")
 
 telegram_token = api_key = get_secret(
     secret_id="telegram-274181059559", key="TOKEN", profile_name=profile_name

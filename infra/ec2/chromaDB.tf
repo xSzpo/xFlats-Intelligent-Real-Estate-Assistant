@@ -33,7 +33,7 @@ resource "aws_security_group" "chroma_sg" {
 
 resource "aws_instance" "chroma_instance" {
   ami                  = "ami-03250b0e01c28d196" // Ubuntu 24.04 LTS
-  instance_type        = "t3.micro"
+  instance_type        = "t3.small"
   key_name             = aws_key_pair.chroma_key.key_name
   security_groups      = [aws_security_group.chroma_sg.name]
   iam_instance_profile = data.terraform_remote_state.iam.outputs.ec2_chroma_instance_profile.name
@@ -69,16 +69,6 @@ resource "aws_volume_attachment" "chroma_data_attach" {
   force_detach = true
 }
 
-resource "aws_eip" "chroma_ip" {
-  instance   = aws_instance.chroma_instance.id
-  domain     = "vpc"
-  depends_on = [aws_instance.chroma_instance]
-}
-
-output "chroma_public_ip" {
-  description = "Elastic IP address of the ChromaDB EC2 instance"
-  value       = aws_eip.chroma_ip.public_ip
-}
 
 resource "aws_backup_vault" "chroma_backup_vault" {
   name = "chroma-backup-vault"

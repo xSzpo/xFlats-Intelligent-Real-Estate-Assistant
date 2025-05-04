@@ -23,9 +23,8 @@ AWS_PROFILE=priv docker buildx build \
   -t 274181059559.dkr.ecr.eu-central-1.amazonaws.com/xflats-crawler:${GIT_HASH} \
   .
 
-
 docker pull --platform linux/amd64 274181059559.dkr.ecr.eu-central-1.amazonaws.com/xflats-crawler:latest
 
-docker run --platform linux/amd64 -d --name property-bot 274181059559.dkr.ecr.eu-central-1.amazonaws.com/xflats-crawler:latest
+docker run --platform linux/amd64 -d -e CHROMADB_IP='dddd' --name property-bot 274181059559.dkr.ecr.eu-central-1.amazonaws.com/xflats-crawler:latest
 
 ```

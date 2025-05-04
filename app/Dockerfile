@@ -17,7 +17,7 @@ RUN touch /var/log/cron.log
 # 4) Drop a system‐cron file into /etc/cron.d
 #    - it must include the 'root' user field
 #    - use the absolute path to python3
-RUN echo "*/15 * * * * root /usr/local/bin/python3 /app/main.py >> /var/log/cron.log 2>&1" \
+RUN echo "*/30 * * * * root /usr/local/bin/python3 /app/main.py >> /var/log/cron.log 2>&1" \
     > /etc/cron.d/property-bot-cron && \
     chmod 0644 /etc/cron.d/property-bot-cron
 
