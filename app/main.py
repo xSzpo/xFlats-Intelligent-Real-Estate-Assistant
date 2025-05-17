@@ -2,12 +2,9 @@ import datetime
 import os
 import time
 
-import requests
 from google import genai
 from utils import (
     add_offers_to_db,
-    create_offer_text,
-    get_price_point,
     get_secret,
     setup_vector_database,
     summarize_webpage,
@@ -164,7 +161,7 @@ def main():
                     }
                 },
                 {"subways": {"$eq": True}},
-                {"number_of_rooms": {"$gte": 3}},
+                {"number_of_rooms": {"$gte": 2}},
             ]
         },
     )["metadatas"]
