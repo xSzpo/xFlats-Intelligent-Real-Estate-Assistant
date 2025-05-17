@@ -13,8 +13,7 @@ from utils import (
 # bot page
 # https://api.telegram.org/bot{telegram_token}/getUpdates
 
-profile_name = "priv"
-
+profile_name = os.getenv("AWS_PROFILE", None)
 
 chromadb_ip = os.getenv("CHROMADB_IP", "chromadb")
 
