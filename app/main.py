@@ -16,8 +16,7 @@ from utils import (
 # bot page
 # https://api.telegram.org/bot{telegram_token}/getUpdates
 
-profile_name = "priv"
-
+profile_name = os.getenv("AWS_PROFILE", None)
 
 chromadb_ip = os.getenv("CHROMADB_IP", "chromadb")
 
@@ -57,8 +56,7 @@ JSON Response:
 
 PROMPT_TEMPLATE = """
 You are an expert in extracting property listings. Based on the HTML below from a real estate 
-webpage, please extract all apartment offers into a valid JSON list using fewer than {max_tokens} 
-tokens. The offers are in Danish; please translate the data into English. 
+webpage, please extract all apartment offers into a valid JSON.
 
 Please generate the URL of the offers using the pattern 'https://www.boligsiden.dk/adresse/<partial_url>', 
 e.g. 'https://www.boligsiden.dk/adresse/aalekistevej-172-3-31-2720-vanloese-01018672_172__3__31'
@@ -81,20 +79,19 @@ system_instruction_template = (
     "Best offers #2: {best_offer_2}\n\n"
     "Best offers #3: {best_offer_3}\n\n"
 )
+BASE_URL = (
+    "https://www.boligsiden.dk/tilsalg/villa,ejerlejlighed?sortAscending=true"
+    "&mapBounds=7.780294,54.501948,15.330305,57.896401&priceMax=7000000"
+    "&polygon=12.555001,55.714439|12.544964,55.711152|12.535566,55.708713|12.523383,55.700403|"
+    "12.513564,55.690885|12.507604,55.674192|12.508089,55.656840|12.521769,55.648585|"
+    "12.534702,55.642731|12.564876,55.614388|12.591917,55.614270|12.599055,55.649692|"
+    "12.605518,55.649361|12.615303,55.649093|12.628699,55.649335|12.641590,55.649906|"
+    "12.636977,55.665739|12.626008,55.676732|12.636641,55.686489|12.654036,55.720127|"
+    "12.602392,55.730897|12.555001,55.714439&page={page}"
+)
 
 
 def main():
-    BASE_URL = (
-        "https://www.boligsiden.dk/tilsalg/villa,ejerlejlighed?sortAscending=true"
-        "&mapBounds=7.780294,54.501948,15.330305,57.896401&priceMax=7000000"
-        "&polygon=12.555001,55.714439|12.544964,55.711152|12.535566,55.708713|12.523383,55.700403|"
-        "12.513564,55.690885|12.507604,55.674192|12.508089,55.656840|12.521769,55.648585|"
-        "12.534702,55.642731|12.564876,55.614388|12.591917,55.614270|12.599055,55.649692|"
-        "12.605518,55.649361|12.615303,55.649093|12.628699,55.649335|12.641590,55.649906|"
-        "12.636977,55.665739|12.626008,55.676732|12.636641,55.686489|12.654036,55.720127|"
-        "12.602392,55.730897|12.555001,55.714439&page={page}"
-    )
-
     print("Starting data collection process")
 
     # Set up vector database
@@ -109,6 +106,7 @@ def main():
 
     MAX_RETRIES = 3  # Number of times to retry a page
     NUMBER_OF_PAGES_TO_OPEN = int(os.getenv("NUMBER_OF_PAGES_TO_OPEN", 2))
+    NUMBER_OF_ROOMS = int(os.getenv("NUMBER_OF_ROOMS", 2))
     GET_OFFERS_FROM_X_LAST_MIN = 5
 
     for page in range(1, NUMBER_OF_PAGES_TO_OPEN):
@@ -164,31 +162,31 @@ def main():
                     }
                 },
                 {"subways": {"$eq": True}},
-                {"number_of_rooms": {"$gte": 3}},
+                {"number_of_rooms": {"$gte": NUMBER_OF_ROOMS}},
             ]
         },
     )["metadatas"]
 
-    # if newest_results:
-    #     print(
-    #         f"Number of apartment listings to share on Telegram: {len(newest_results)}"
-    #     )
+    if newest_results:
+        print(
+            f"Number of apartment listings to share on Telegram: {len(newest_results)}"
+        )
 
-    #     for offer in newest_results:
-    #         offer["price_point"] = get_price_point(offer, collection)
+        for offer in newest_results:
+            offer["price_point"] = get_price_point(offer, collection)
 
-    #     newest_results.sort(key=lambda x: x.get("price_point", 0))
+        newest_results.sort(key=lambda x: x.get("price_point", 0))
 
-    #     for offer in newest_results:
-    #         offer_txt = create_offer_text(offer)
-    #         url = (
-    #             f"https://api.telegram.org/bot{telegram_token}/"
-    #             f"sendMessage?chat_id={telegram_chat_id}&text={offer_txt}"
-    #         )
-    #         requests.get(url).json()
+        for offer in newest_results:
+            offer_txt = create_offer_text(offer)
+            url = (
+                f"https://api.telegram.org/bot{telegram_token}/"
+                f"sendMessage?chat_id={telegram_chat_id}&text={offer_txt}"
+            )
+            requests.get(url).json()
 
-    # else:
-    #     print("There are no apartment listings to share on Telegram.")
+    else:
+        print("There are no apartment listings to share on Telegram.")
 
 
 if __name__ == "__main__":

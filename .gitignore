@@ -4,3 +4,4 @@ __pycache__
 .terraform
 cache
 lambda-crawler/.aws-sam
+__*
