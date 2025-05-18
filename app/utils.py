@@ -14,33 +14,7 @@ from chromadb import Documents, EmbeddingFunction, Embeddings
 from google import genai
 from google.api_core import retry
 from google.genai import types
-from osmnx import features_from_point
 from pydantic import BaseModel
-
-
-def with_overpass_retry(fn, max_retries=3, retry_delay=60):
-    """
-    Retry a function that calls Overpass API, waiting `retry_delay` seconds after
-    connection refused errors.
-    """
-    for attempt in range(max_retries):
-        try:
-            return fn()
-        except requests.exceptions.ConnectionError as e:
-            if "Connection refused" in str(e):
-                print(
-                    f"Overpass API refused connection. Retrying in {retry_delay} seconds (attempt {attempt + 1}/{max_retries})..."
-                )
-                time.sleep(retry_delay)
-            else:
-                raise
-        except Exception as e:
-            # For other errors (like HTTP 429, server errors), print and retry after delay
-            print(
-                f"Other Overpass error: {e}. Retrying in {retry_delay} seconds (attempt {attempt + 1}/{max_retries})..."
-            )
-            time.sleep(retry_delay)
-    raise Exception("Exceeded maximum retries to Overpass API")
 
 
 def get_secret(secret_id, key=None, profile_name=None):
@@ -119,58 +93,80 @@ def fix_json(json_result: str) -> list[dict]:
 
 
 def get_public_transport_stations(
-    lat: float, lon: float, dist: int = 700
-) -> tuple[dict, str]:
+    lat: float, lon: float, radius: int = 700, max_retries: int = 5
+):
+    overpass_url = "http://overpass-api.de/api/interpreter"
+    query = f"""
+    [out:json][timeout:25];
+    (
+      node(around:{radius},{lat},{lon})[public_transport=station];
+      node(around:{radius},{lat},{lon})[railway=subway_entrance];
+      node(around:{radius},{lat},{lon})[railway=station];
+    );
+    out body;
     """
-    Retrieve names of nearby public transport stations grouped by mode.
-    Retries on Overpass errors.
-    """
-    try:
-        point = (lat, lon)
-        tags = {"public_transport": "station"}
-        pois = with_overpass_retry(
-            lambda: features_from_point(point, tags, dist=dist).reset_index()
-        )
-        if "amenity" in pois:
-            pois.fillna({"station": pois["amenity"]}, inplace=True)
 
-        def extract_names(column: str, value: str) -> str:
-            if column not in pois.columns:
-                return []
-            filtered = pois[pois[column] == value]["name"].dropna().unique()
-            return filtered
+    backoff_time = 30
 
-        stations = {
-            "ferry_terminals": extract_names("station", "ferry_terminal"),
-            "light_rails": extract_names("station", "light_rail"),
-            "subways": extract_names("station", "subway"),
-            "bus_stations": extract_names("station", "bus_station"),
-            "trains": extract_names("station", "train"),
-        }
-        text = ""
+    station_types = {
+        "ferry_terminals": "ferry_terminal",
+        "light_rails": "light_rail",
+        "subways": "subway",
+        "bus_stations": "bus_station",
+        "trains": "train",
+    }
 
-        for station in stations:
-            if hasattr(stations[station], "size") and stations[station].size > 0:
-                text += "; ".join([f"{station}:{i}" for i in stations[station]])
-                text += "; "
-                stations[station] = True
+    for attempt in range(max_retries):
+        try:
+            response = requests.get(overpass_url, params={"data": query})
+            response.raise_for_status()
+            data = response.json()
+
+            stations = {key: [] for key in station_types}
+
+            for element in data["elements"]:
+                tags = element.get("tags", {})
+                station_tag = (
+                    tags.get("station")
+                    or tags.get("public_transport")
+                    or tags.get("railway")
+                )
+                name = tags.get("name")
+
+                if name:
+                    for key, value in station_types.items():
+                        if station_tag == value:
+                            stations[key].append(name)
+
+            public_transport_text = ""
+            for key in stations:
+                if stations[key]:
+                    public_transport_text += (
+                        "; ".join([f"{key}:{i}" for i in set(stations[key])]) + "; "
+                    )
+                    stations[key] = True
+                else:
+                    stations[key] = False
+
+            stations["public_transport_text"] = public_transport_text
+
+            return stations
+
+        except requests.exceptions.RequestException as e:
+            print(f"Attempt {attempt + 1}/{max_retries} failed: {e}")
+            if attempt < max_retries - 1:
+                time.sleep(backoff_time)
+                backoff_time *= 2
             else:
-                stations[station] = False
-
-        stations.update({"public_transport_text": text})
-
-        return stations
-
-    except Exception as e:
-        print(e)
-        return {
-            "ferry_terminals": False,
-            "light_rails": False,
-            "subways": False,
-            "bus_stations": False,
-            "trains": False,
-            "public_transport_text": "",
-        }
+                print(f"Failed after {max_retries} attempts: {e}")
+                return {
+                    "ferry_terminals": False,
+                    "light_rails": False,
+                    "subways": False,
+                    "bus_stations": False,
+                    "trains": False,
+                    "public_transport_text": "",
+                }
 
 
 def summarize_webpage(
@@ -214,6 +210,7 @@ def summarize_webpage(
     results = fix_json(response.text)
 
     if results:
+        print(f"Retrieved {len(results)} offers from crawler.")
         for offer in results:
             if bool(offer.get("url")):
                 offer.update(
@@ -221,6 +218,7 @@ def summarize_webpage(
                 )
                 offer["create_date"] = datetime.datetime.today().timestamp()
                 offer["id"] = hashlib.shake_128(offer.get("url").encode()).hexdigest(8)
+                time.sleep(0.5)
         return results
     else:
         return None

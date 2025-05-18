@@ -59,7 +59,7 @@ You are an expert in extracting property listings. Based on the HTML below from 
 webpage, please extract all apartment offers into a valid JSON.
 
 Please generate the URL of the offers using the pattern 'https://www.boligsiden.dk/adresse/<partial_url>', 
-e.g. 'https://www.boligsiden.dk/adresse/aalekistevej-172-3-31-2720-vanloese-01018672_172__3__31'
+e.g. 'https://www.boligsiden.dk/adresse/kloeverbladsgade-67-1-th-2500-valby-01013788__67__1__th'
 webpage:\n\n
 
 {html_content}
@@ -105,7 +105,7 @@ def main():
     all_results = []
 
     MAX_RETRIES = 3  # Number of times to retry a page
-    NUMBER_OF_PAGES_TO_OPEN = int(os.getenv("NUMBER_OF_PAGES_TO_OPEN", 2))
+    NUMBER_OF_PAGES_TO_OPEN = int(os.getenv("NUMBER_OF_PAGES_TO_OPEN", 3))
     NUMBER_OF_ROOMS = int(os.getenv("NUMBER_OF_ROOMS", 2))
     GET_OFFERS_FROM_X_LAST_MIN = 5
 
