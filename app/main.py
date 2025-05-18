@@ -109,13 +109,14 @@ def main():
     NUMBER_OF_ROOMS = int(os.getenv("NUMBER_OF_ROOMS", 2))
     GET_OFFERS_FROM_X_LAST_MIN = 5
 
-    for page in range(1, NUMBER_OF_PAGES_TO_OPEN):
+    for page in range(1, NUMBER_OF_PAGES_TO_OPEN + 1):
         print(f"Processing historical listings from page {page}")
         retries = 0
         success = False
 
         while retries < MAX_RETRIES and not success:
             page_url = BASE_URL.format(page=page)
+            print(page_url)
             try:
                 offers = summarize_webpage(
                     page_url, PROMPT_TEMPLATE, EXAMPLE_TEXT, client
