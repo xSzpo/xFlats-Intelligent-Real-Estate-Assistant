@@ -4,7 +4,7 @@ import json
 import re
 import statistics
 import time
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, urlunparse
 from urllib.request import urlopen
 
 import boto3
@@ -169,6 +169,17 @@ def get_public_transport_stations(
                 }
 
 
+def filter_unique_ids(dict_list, id_key="id"):
+    seen_ids = set()
+    result = []
+    for item in dict_list:
+        unique_id = item.get(id_key)
+        if unique_id not in seen_ids:
+            seen_ids.add(unique_id)
+            result.append(item)
+    return result
+
+
 def summarize_webpage(
     url: str,
     prompt: str,
@@ -213,12 +224,17 @@ def summarize_webpage(
         print(f"Retrieved {len(results)} offers from crawler.")
         for offer in results:
             if bool(offer.get("url")):
+                parsed_url = urlparse(offer.get("url"))
+                offer["url"] = urlunparse(parsed_url._replace(query=""))
                 offer.update(
                     get_public_transport_stations(offer.get("lat"), offer.get("long"))
                 )
                 offer["create_date"] = datetime.datetime.today().timestamp()
                 offer["id"] = hashlib.shake_128(offer.get("url").encode()).hexdigest(8)
                 time.sleep(0.5)
+
+        results = filter_unique_ids(results, id_key="id")
+        print(f"Number of offers after removing duplicates: {len(results)}.")
         return results
     else:
         return None
