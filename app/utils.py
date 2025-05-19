@@ -173,11 +173,69 @@ def filter_unique_ids(dict_list, id_key="id"):
     seen_ids = set()
     result = []
     for item in dict_list:
-        unique_id = item.get(id_key)
-        if unique_id not in seen_ids:
-            seen_ids.add(unique_id)
-            result.append(item)
+        # remove objects without ID
+        if item.get(id_key):
+            unique_id = item.get(id_key)
+            if unique_id not in seen_ids:
+                seen_ids.add(unique_id)
+                result.append(item)
     return result
+
+
+def page_exists(url: str, timeout: float = 5.0, max_bytes: int = 10_000) -> bool:
+    """
+    Returns True if the URL likely exists.  Returns False if:
+      - HTTP status is 404–499
+      - OR the first `max_bytes` of HTML contains Next.js/React 404 markers.
+
+    Note: This only downloads up to `max_bytes` of the body on a 200, and then closes.
+    """
+    try:
+        # 1) Try a HEAD
+        resp = requests.head(url, allow_redirects=True, timeout=timeout)
+        # Some servers disallow HEAD: treat them like GET below
+        if resp.status_code >= 400 and resp.status_code < 500:
+            return False
+        if resp.status_code >= 500:
+            # Server error or gateway, we might retry or treat as unreachable
+            return False
+    except requests.RequestException:
+        return False
+
+    # If we got here with 200–399, but HEAD might have lied or returned 200 for a React 404,
+    # do a streamed GET and scan the first chunk(s):
+    try:
+        resp = requests.get(url, allow_redirects=True, timeout=timeout, stream=True)
+        # If the GET itself returns a 404–499, treat as missing
+        if 400 <= resp.status_code < 500:
+            resp.close()
+            return False
+
+        # Read up to max_bytes total
+        total = 0
+        buffer = []
+        for chunk in resp.iter_content(chunk_size=1024, decode_unicode=True):
+            buffer.append(chunk)
+            total += len(chunk)
+            if total >= max_bytes:
+                break
+        snippet = "".join(buffer)
+        resp.close()
+
+        # Look for Next.js/React 404 markers:
+        not_found_markers = [
+            '<html id="__next_error__">',
+            "NEXT_NOT_FOUND",
+            "Siden findes ikke!",
+        ]
+        for marker in not_found_markers:
+            if marker in snippet:
+                return False
+
+        return True
+
+    except requests.RequestException:
+        return False
 
 
 def summarize_webpage(
@@ -226,15 +284,22 @@ def summarize_webpage(
             if bool(offer.get("url")):
                 parsed_url = urlparse(offer.get("url"))
                 offer["url"] = urlunparse(parsed_url._replace(query=""))
-                offer.update(
-                    get_public_transport_stations(offer.get("lat"), offer.get("long"))
-                )
-                offer["create_date"] = datetime.datetime.today().timestamp()
-                offer["id"] = hashlib.shake_128(offer.get("url").encode()).hexdigest(8)
-                time.sleep(0.5)
+                if page_exists(offer.get("url")):
+                    offer.update(
+                        get_public_transport_stations(
+                            offer.get("lat"), offer.get("long")
+                        )
+                    )
+                    offer["create_date"] = datetime.datetime.today().timestamp()
+                    offer["id"] = hashlib.shake_128(
+                        offer.get("url").encode()
+                    ).hexdigest(8)
+                    time.sleep(0.2)
 
         results = filter_unique_ids(results, id_key="id")
-        print(f"Number of offers after removing duplicates: {len(results)}.")
+        print(
+            f"Number of offers after removing duplicates and validating URLs: {len(results)}."
+        )
         return results
     else:
         return None
