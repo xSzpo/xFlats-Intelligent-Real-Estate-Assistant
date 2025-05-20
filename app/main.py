@@ -39,24 +39,29 @@ EXAMPLE:
 JSON Response:
 ```
 [{
-"address": "Ålekistevej 172, 2720 Vanløse",
-"lat": 55.671677,
-"long":12.553303,
+"address": "Ålekistevej 172, 2720 Vanløse, Denmark",
 "price": 2798000,
 "area_m2": 87,
 "number_of_rooms":3,
+"floor": 1,
 "year_built": 1988,
 "energy_label": "C",
 "url": "https://www.boligsiden.dk/adresse/aalekistevej-172-3-31-2720-vanloese-01018672_172__3__31",
 }
 ]
 ```
+(Note: the `address` field is already normalized to “Street Name Number, PostalCode City, Country”.
+Note: st or stuen means ground floor, mark it as st)
 """
 
 
 PROMPT_TEMPLATE = """
 You are an expert in extracting property listings. Based on the HTML below from a real estate 
-webpage, please extract all apartment offers into a valid JSON.
+webpage, please extract all apartment offers into a valid JSON. 
+Make sure that offer url matches the offer and the address.
+⚠️ **Be very careful to match each URL to its corresponding offer - not mix them up.**
+Pleaae generate a cleaned, normalized address in the format `Street Name Number, PostalCode City, Country`
+(e.g. “Ålekistevej 172, 2720 Vanløse, Denmark”), stripping out floor/unit or other extras.
 
 Please generate the URL of the offers using the pattern 'https://www.boligsiden.dk/adresse/<partial_url>', 
 e.g. 'https://www.boligsiden.dk/adresse/kloeverbladsgade-67-1-th-2500-valby-01013788__67__1__th'

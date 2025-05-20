@@ -4,17 +4,53 @@ import json
 import re
 import statistics
 import time
-from urllib.parse import urljoin, urlparse, urlunparse
+from urllib.parse import urljoin, urlparse
 from urllib.request import urlopen
 
 import boto3
 import chromadb
 import requests
+from bs4 import BeautifulSoup, Comment
 from chromadb import Documents, EmbeddingFunction, Embeddings
 from google import genai
 from google.api_core import retry
 from google.genai import types
 from pydantic import BaseModel
+
+
+def preprocess_html(html_content):
+    soup = BeautifulSoup(html_content, "html.parser")
+
+    # Define elements to remove (excluding 'svg' to retain important energy labels)
+    elements_to_remove = [
+        "script",
+        "style",
+        "meta",
+        "link",
+        "nav",
+        "header",
+        "footer",
+        "aside",
+        "form",
+        "input",
+        "button",
+        "select",
+        "option",
+        "textarea",
+        "canvas",
+        "iframe",
+        "noscript",
+    ]
+
+    # Remove defined elements
+    for tag in soup(elements_to_remove):
+        tag.decompose()
+
+    # Remove HTML comments
+    for comment in soup.find_all(string=lambda text: isinstance(text, Comment)):
+        comment.extract()
+
+    return str(soup)
 
 
 def get_secret(secret_id, key=None, profile_name=None):
@@ -92,9 +128,37 @@ def fix_json(json_result: str) -> list[dict]:
     return [json.loads(match) for match in matches]
 
 
+def geocode_address(address: str) -> tuple[float, float]:
+    """
+    Use OSM Nominatim to turn a street address into (lat, lon).
+    """
+    url = "https://nominatim.openstreetmap.org/search"
+    params = {"q": address, "format": "json", "limit": 1}
+    headers = {
+        "User-Agent": "my_app/1.0 (youremail@example.com)"  # ← set your own contact info
+    }
+    resp = requests.get(url, params=params, headers=headers)
+    resp.raise_for_status()
+    results = resp.json()
+    if not results:
+        raise ValueError(f"No location found for address: {address!r}")
+    return float(results[0]["lat"]), float(results[0]["lon"])
+
+
 def get_public_transport_stations(
-    lat: float, lon: float, radius: int = 700, max_retries: int = 5
+    lat: float = None,
+    lon: float = None,
+    address: str = None,
+    radius: int = 700,
+    max_retries: int = 5,
 ):
+    # If an address was passed, geocode it first:
+    if address is not None:
+        lat, lon = geocode_address(address)
+
+    if lat is None or lon is None:
+        raise ValueError("Must supply either an address or both lat and lon")
+
     overpass_url = "http://overpass-api.de/api/interpreter"
     query = f"""
     [out:json][timeout:25];
@@ -107,7 +171,6 @@ def get_public_transport_stations(
     """
 
     backoff_time = 30
-
     station_types = {
         "ferry_terminals": "ferry_terminal",
         "light_rails": "light_rail",
@@ -123,7 +186,6 @@ def get_public_transport_stations(
             data = response.json()
 
             stations = {key: [] for key in station_types}
-
             for element in data["elements"]:
                 tags = element.get("tags", {})
                 station_tag = (
@@ -132,7 +194,6 @@ def get_public_transport_stations(
                     or tags.get("railway")
                 )
                 name = tags.get("name")
-
                 if name:
                     for key, value in station_types.items():
                         if station_tag == value:
@@ -142,14 +203,13 @@ def get_public_transport_stations(
             for key in stations:
                 if stations[key]:
                     public_transport_text += (
-                        "; ".join([f"{key}:{i}" for i in set(stations[key])]) + "; "
+                        "; ".join(f"{key}:{i}" for i in set(stations[key])) + "; "
                     )
                     stations[key] = True
                 else:
                     stations[key] = False
 
             stations["public_transport_text"] = public_transport_text
-
             return stations
 
         except requests.exceptions.RequestException as e:
@@ -250,8 +310,7 @@ def summarize_webpage(
 
     class Offers(BaseModel):
         address: str
-        lat: float
-        long: float
+        floor: str
         price: int
         area_m2: int
         number_of_rooms: int
@@ -262,7 +321,7 @@ def summarize_webpage(
     class ListOfOffers(BaseModel):
         offers: list[Offers]
 
-    html_content = fetch_html(url)
+    html_content = preprocess_html(fetch_html(url))
     response = client.models.generate_content(
         model="gemini-2.0-flash-lite",
         config=types.GenerateContentConfig(
@@ -281,20 +340,21 @@ def summarize_webpage(
     if results:
         print(f"Retrieved {len(results)} offers from crawler.")
         for offer in results:
-            if bool(offer.get("url")):
-                parsed_url = urlparse(offer.get("url"))
-                offer["url"] = urlunparse(parsed_url._replace(query=""))
-                if page_exists(offer.get("url")):
-                    offer.update(
-                        get_public_transport_stations(
-                            offer.get("lat"), offer.get("long")
-                        )
-                    )
-                    offer["create_date"] = datetime.datetime.today().timestamp()
-                    offer["id"] = hashlib.shake_128(
-                        offer.get("url").encode()
-                    ).hexdigest(8)
-                    time.sleep(0.2)
+            if offer.get("url") and page_exists(offer["url"]):
+                try:
+                    address = offer.get("address")
+                    lat, lon = geocode_address(address)
+                    offer["lat"], offer["long"] = lat, lon
+                    # Now fetch stations around the (new) coords
+                    stations = get_public_transport_stations(lat=lat, lon=lon)
+                    offer.update(stations)
+                    print(f"Retrieved location for {address}")
+                except Exception as e:
+                    print(f"No geocode_address retrieved, {e}")
+
+                offer["create_date"] = datetime.datetime.today().timestamp()
+                offer["id"] = hashlib.shake_128(offer.get("url").encode()).hexdigest(8)
+                time.sleep(1)
 
         results = filter_unique_ids(results, id_key="id")
         print(
@@ -308,6 +368,7 @@ def summarize_webpage(
 def offer_to_text(offer: dict) -> str:
     return (
         f"Address: {offer.get('address', '')}. "
+        f"Floor: {offer.get('floor', '')}. "
         f"Area: {offer.get('area_m2', '')} m². "
         f"Rooms: {offer.get('number_of_rooms', '')}. "
         f"Year built: {offer.get('year_built', '')}. "

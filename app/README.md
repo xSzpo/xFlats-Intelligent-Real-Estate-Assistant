@@ -1,5 +1,5 @@
 ```bash
-AWS_PROFILE=priv CHROMADB_IP=3.124.214.10 python -m main
+AWS_PROFILE=priv CHROMADB_IP=3.124.214.10 NUMBER_OF_PAGES_TO_OPEN=1 python -m main
 ```
 
 ```bash
@@ -14,8 +14,7 @@ aws ecr get-login-password \
 docker buildx create --use
 
 # grab the current Git commit short hash
-GIT_HASH=$(git rev-parse --short HEAD) \
-AWS_PROFILE=priv \
+GIT_HASH=$(git rev-parse --short HEAD) AWS_PROFILE=priv \
 docker buildx build \
   --platform linux/amd64,linux/arm64 \
   --push \
