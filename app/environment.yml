@@ -12,3 +12,5 @@ dependencies:
     - osmnx
     - chromadb
     - boto3
+    - requests
+    - beautifulsoup4
