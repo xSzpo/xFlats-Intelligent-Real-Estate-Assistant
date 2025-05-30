@@ -2,30 +2,30 @@ import datetime
 import hashlib
 import os
 import time
-from pydantic import BaseModel
+
 import chromadb
 import requests
 from chromadb import Documents, EmbeddingFunction, Embeddings
 from google import genai
 from google.api_core import retry
 from google.genai import types
+from pydantic import BaseModel
 from utils import (
+    add_offers_to_db,
     check_crawl_permission,
+    chromadb_check_if_document_exists,
+    create_offer_text,
+    extract_adresse_urls,
+    fetch_and_preprocess,
     fetch_html,
-    filter_unique_ids,
     fix_json,
     geocode_address,
     get_price_point,
     get_public_transport_stations,
     get_secret,
     is_retriable,
-    preprocess_html,
+    offer_to_text,
     remove_url_parameters,
-    extract_adresse_urls,
-    chromadb_check_if_document_exists,
-    create_offer_text,
-    # add_offers_to_db,
-    fetch_and_preprocess,
 )
 
 # bot page
@@ -49,6 +49,8 @@ genai_api_key = get_secret(
 )
 
 client = genai.Client(api_key=genai_api_key)
+
+OFFER_VERSION = 2
 
 PROMPT_TEMPLATE = """
 You are an expert in extracting apartment listings from cleaned HTML text. Your task is to extract key structured information and present it in **valid JSON format**.
@@ -162,74 +164,6 @@ def setup_vector_database(ip: int, client: any, port=8000):
     return collection
 
 
-def summarize_webpage(
-    url: str,
-    prompt: str,
-    example: str,
-    client: any,
-    max_tokens: int = 8192,
-) -> list[dict] | None:
-    if not check_crawl_permission(url):
-        raise ValueError(f"Crawling not permitted: {url}")
-
-    html_content = preprocess_html(fetch_html(url))
-    response = client.models.generate_content(
-        model="gemini-2.0-flash",
-        config=types.GenerateContentConfig(
-            temperature=0.1,
-            response_mime_type="application/json",
-            response_schema=ListOfOffers,
-            max_output_tokens=max_tokens,
-        ),
-        contents=[
-            prompt.format(max_tokens=max_tokens, html_content=html_content),
-            example,
-        ],
-    )
-    results = fix_json(response.text)
-
-    if results:
-        print(f"Retrieved {len(results)} offers from crawler.")
-
-        # First, clean URLs
-        for offer in results:
-            if offer.get("url"):
-                offer["url"] = remove_url_parameters(offer.get("url"))
-
-        # Assign IDs now that URLs are cleaned
-        for offer in results:
-            if offer.get("url"):
-                offer["id"] = hashlib.shake_128(offer["url"].encode()).hexdigest(8)
-
-        # Filter out duplicates by ID
-        results = filter_unique_ids(results, id_key="id")
-        print(
-            f"Number of offers after removing duplicates and validating URLs: {len(results)}."
-        )
-
-        # Now process the remaining offers
-        for offer in results:
-            if offer.get("url") and page_exists(offer["url"]):
-                try:
-                    address = offer.get("address")
-                    lat, lon = geocode_address(address)
-                    offer["lat"], offer["long"] = lat, lon
-
-                    # Fetch stations around the new coordinates
-                    stations = get_public_transport_stations(lat=lat, lon=lon)
-                    offer.update(stations)
-                    print(f"Retrieved location for {address}")
-                except Exception as e:
-                    print(f"No geocode_address retrieved, {e}")
-
-                offer["create_date"] = datetime.datetime.today().timestamp()
-                time.sleep(1)
-
-        return results
-    else:
-        return None
-
-
 def main():
     print("Starting data collection process")
 
@@ -271,7 +205,9 @@ def main():
                         new_urls += [url]
 
                 if not new_urls:
-                    continue
+                    print(f"No new URLs found on page {page}, skipping.")
+                    success = True
+                    break
 
                 offers_source: list[dict] = []
 
@@ -306,29 +242,22 @@ def main():
                         EXAMPLE_TEXT,
                     ],
                 )
-                results = fix_json(response.text)
+                offers = fix_json(response.text)
 
-                if results:
-                    print(f"Retrieved {len(results)} offers from crawler.")
+                if offers:
+                    print(f"Retrieved {len(offers)} offers from crawler.")
 
                     # First, clean URLs
-                    for offer in results:
+                    for offer in offers:
                         if offer.get("url"):
                             offer["url"] = remove_url_parameters(offer.get("url"))
-
-                    # Assign IDs now that URLs are cleaned
-                    for offer in results:
+                        # Assign IDs now that URLs are cleaned
                         if offer.get("url"):
                             offer["id"] = hashlib.shake_128(
                                 offer["url"].encode()
                             ).hexdigest(8)
+                        offer["version"] = OFFER_VERSION
 
-                    # Filter out duplicates by ID
-                    results = filter_unique_ids(results, id_key="id")
-                    print(
-                        f"Number of offers after removing duplicates and validating URLs: {len(results)}."
-                    )
-                    for offer in results:
                         try:
                             address = offer.get("address")
                             lat, lon = geocode_address(address)
@@ -344,15 +273,11 @@ def main():
                         offer["create_date"] = datetime.datetime.today().timestamp()
                         time.sleep(1)
 
-                offers = results
+                all_results.extend(offers)
+                success = True
             except BaseException as e:
                 print(e)
                 offers = []
-
-            if len(offers) > 0:
-                all_results.extend(offers)
-                success = True
-            else:
                 retries += 1
                 time.sleep(retries)
                 print(f"Error retrieving page {page}, retry {retries}/{MAX_RETRIES}")
@@ -372,9 +297,10 @@ def main():
     # Add historical listings to vector database
     print(f"Adding {len(all_results_unique)} historical listings to vector database")
 
-    print(all_results_unique)
+    for offer in all_results_unique:
+        print(offer_to_text(offer))
 
-    # add_offers_to_db(collection, all_results_unique)
+    add_offers_to_db(collection, all_results_unique)
 
     # get last offers
     now = datetime.datetime.now()
@@ -408,6 +334,7 @@ def main():
 
         for offer in newest_results:
             offer_txt = create_offer_text(offer)
+            print(offer_txt)
             url = (
                 f"https://api.telegram.org/bot{telegram_token}/"
                 f"sendMessage?chat_id={telegram_chat_id}&text={offer_txt}"

@@ -415,9 +415,11 @@ def remove_url_parameters(url: str) -> str:
 def offer_to_text(offer: dict) -> str:
     return (
         f"Address: {offer.get('address', '')}. "
+        f"Description: {offer.get('description', '')}. "
         f"Floor: {offer.get('floor', '')}. "
         f"Area: {offer.get('area_m2', '')} m². "
         f"Rooms: {offer.get('number_of_rooms', '')}. "
+        f"Balcony: {offer.get('balcony', '')}. "
         f"Year built: {offer.get('year_built', '')}. "
         f"Energy label: {offer.get('energy_label', '')}. "
         f"Nearby transit (up to 700 m): {offer.get('public_transport_text', '')}."
@@ -455,6 +457,7 @@ Address: {address}
 Size: {area_m2} m2, Rooms: {number_of_rooms}, Year: {year_built}, Energy: {energy_label}
 Price: {price:,} DKK ({price_point:.2%})
 Subway(s): {subways_txt}
+Description: {description}
 Url: {url}
     """.format(**offer_dict, subways_txt=subways_txt)
 
