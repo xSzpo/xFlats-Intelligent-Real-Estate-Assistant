@@ -30,6 +30,6 @@ docker run --platform linux/amd64 -d -e CHROMADB_IP='dddd' --name property-bot 2
 
 
 ```bash
-AWS_PROFIL=priv CHROMADB_IP=3.124.214.10 NUMBER_OF_PAGES_TO_OPEN=15 python -m main
+AWS_PROFILE=priv CHROMADB_IP=3.124.214.10 NUMBER_OF_PAGES_TO_OPEN=15 python -m main
 
 ```

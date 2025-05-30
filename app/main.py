@@ -34,56 +34,50 @@ genai_api_key = get_secret(
 
 client = genai.Client(api_key=genai_api_key)
 
-EXAMPLE_TEXT = """
-EXAMPLE:
-JSON Response:
-```
-[{
-"address": "Ålekistevej 172, 2720 Vanløse, Denmark",
-"price": 2798000,
-"area_m2": 87,
-"number_of_rooms":3,
-"floor": 1,
-"year_built": 1988,
-"energy_label": "C",
-"url": "https://www.boligsiden.dk/adresse/aalekistevej-172-3-31-2720-vanloese-01018672_172__3__31",
-}
-]
-```
-(Note: the `address` field is already normalized to “Street Name Number, PostalCode City, Country”.
-Note: st or stuen means ground floor, mark it as st)
-"""
-
-
 PROMPT_TEMPLATE = """
-You are an expert in extracting property listings. Based on the HTML below from a real estate 
-webpage, please extract all apartment offers into a valid JSON. 
-Make sure that offer url matches the offer and the address.
-⚠️ **Be very careful to match each URL to its corresponding offer - not mix them up.**
-Pleaae generate a cleaned, normalized address in the format `Street Name Number, PostalCode City, Country`
-(e.g. “Ålekistevej 172, 2720 Vanløse, Denmark”), stripping out floor/unit or other extras.
+You are an expert in extracting property listings from HTML. Your task is to precisely extract
+the following information about apartments for sale and represent the data in a JSON format.
+You *must* follow these *exact* instructions:
 
-Please generate the URL of the offers using the pattern 'https://www.boligsiden.dk/adresse/<partial_url>', 
-e.g. 'https://www.boligsiden.dk/adresse/kloeverbladsgade-67-1-th-2500-valby-01013788__67__1__th'
-webpage:\n\n
+1.  **Extract only apartment listings (Ejerlejlighed) for sale.**
+2.  **Address:** Extract the full address in the format `Street Name Number, PostalCode City, Country`,
+    e.g., `Vestergade 10, 1451 København K, Denmark`. If the floor/unit is mentioned in address, do not include it.
+3.  **Price:** Extract the price as an integer (e.g., `2798000`). If the price is not found, set value as `None`.
+4.  **Area (m2):** Extract the apartment area in square meters as an integer (e.g., `87`). If the area is not found, set value as `None`.
+5.  **Number of Rooms:** Extract number of rooms as integer. If the rooms are not found, set value as `None`.
+6.  **Year Built:** Extract the year the building was built as an integer (e.g., 1988). If not available, use `None`.
+7.  **Energy Label:** Extract energy label (e.g., 'A', 'B', 'C'). If not available, set value as `None`.
+8.  **URL:** Generate the URL for each listing using the pattern 'https://www.boligsiden.dk/adresse/<partial_url>' where the partial URL must match
+     the actual URL from the page. Make sure that offer url matches the offer and the address. Do not include any parameters after `?`
+9.  **If you find multiple URLs, make sure each URL belongs to its apartment's details.**
+10. **If the field has no values, use `None`**.
+11. **If the price is in the format of X.XXX.XXX, remove the '.' separators and use the number.**
+12. Do not include any additional text or notes in the JSON, only the JSON is desired.
+
+HTML:\n\n
 
 {html_content}
 
-Output:
+JSON output:
 """
 
 
-system_instruction_template = (
-    "You are a helpful and informative bot that presents the user with the three best apartment sale offers "
-    "of the day in Copenhagen. The apartments were chosen because their price was the lowest. "
-    "We received five similar offers, calculated the average, and then divided the apartment price by the average. "
-    "Please provide the best offers by including the address, price, size, number  of rooms, year built, public transport "
-    "options, and the URL for each listing, along with a description of how each compares to similar offers."
-    "Use only the information provided in the context.\n\n"
-    "Best offers #1: {best_offer_1}\n\n"
-    "Best offers #2: {best_offer_2}\n\n"
-    "Best offers #3: {best_offer_3}\n\n"
-)
+EXAMPLE_TEXT = """
+```json
+[
+    {
+        "address": "Vestergade 10, 1451 København K, Denmark",
+        "price": 2798000,
+        "area_m2": 87,
+        "number_of_rooms": 3,
+        "year_built": 1988,
+        "energy_label": "C",
+        "url": "https://www.boligsiden.dk/adresse/aalekistevej-172-3-31-2720-vanloese-01018672_172__3__31",
+    },
+]
+"""
+
+
 BASE_URL = (
     "https://www.boligsiden.dk/tilsalg/villa,ejerlejlighed?sortAscending=true"
     "&mapBounds=7.780294,54.501948,15.330305,57.896401&priceMax=7000000"

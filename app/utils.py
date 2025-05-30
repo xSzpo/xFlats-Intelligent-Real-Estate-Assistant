@@ -298,6 +298,10 @@ def page_exists(url: str, timeout: float = 5.0, max_bytes: int = 10_000) -> bool
         return False
 
 
+def remove_url_parameters(url: str) -> str:
+    return url.split("?", 1)[0]
+
+
 def summarize_webpage(
     url: str,
     prompt: str,
@@ -323,7 +327,7 @@ def summarize_webpage(
 
     html_content = preprocess_html(fetch_html(url))
     response = client.models.generate_content(
-        model="gemini-2.0-flash-lite",
+        model="gemini-2.0-flash",
         config=types.GenerateContentConfig(
             temperature=0.1,
             response_mime_type="application/json",
@@ -339,13 +343,32 @@ def summarize_webpage(
 
     if results:
         print(f"Retrieved {len(results)} offers from crawler.")
+
+        # First, clean URLs
+        for offer in results:
+            if offer.get("url"):
+                offer["url"] = remove_url_parameters(offer.get("url"))
+
+        # Assign IDs now that URLs are cleaned
+        for offer in results:
+            if offer.get("url"):
+                offer["id"] = hashlib.shake_128(offer["url"].encode()).hexdigest(8)
+
+        # Filter out duplicates by ID
+        results = filter_unique_ids(results, id_key="id")
+        print(
+            f"Number of offers after removing duplicates and validating URLs: {len(results)}."
+        )
+
+        # Now process the remaining offers
         for offer in results:
             if offer.get("url") and page_exists(offer["url"]):
                 try:
                     address = offer.get("address")
                     lat, lon = geocode_address(address)
                     offer["lat"], offer["long"] = lat, lon
-                    # Now fetch stations around the (new) coords
+
+                    # Fetch stations around the new coordinates
                     stations = get_public_transport_stations(lat=lat, lon=lon)
                     offer.update(stations)
                     print(f"Retrieved location for {address}")
@@ -353,13 +376,8 @@ def summarize_webpage(
                     print(f"No geocode_address retrieved, {e}")
 
                 offer["create_date"] = datetime.datetime.today().timestamp()
-                offer["id"] = hashlib.shake_128(offer.get("url").encode()).hexdigest(8)
                 time.sleep(1)
 
-        results = filter_unique_ids(results, id_key="id")
-        print(
-            f"Number of offers after removing duplicates and validating URLs: {len(results)}."
-        )
         return results
     else:
         return None
