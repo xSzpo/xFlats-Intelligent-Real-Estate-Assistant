@@ -32,7 +32,6 @@ from utils import (
     get_public_transport_stations,
     get_secret,
     is_retriable,
-    offer_to_text,
     remove_url_parameters,
 )
 
@@ -427,8 +426,6 @@ class RealEstateScraper:
             print(
                 f"Adding {len(historical_offers)} historical listings to vector database"
             )
-            for offer in historical_offers:
-                print(offer_to_text(offer))
             add_offers_to_db(self.collection, historical_offers)
 
         # Get and send recent offers
