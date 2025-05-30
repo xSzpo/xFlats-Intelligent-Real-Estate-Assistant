@@ -1,16 +1,30 @@
 import datetime
+import hashlib
 import os
+import re
 import time
 
+import chromadb
 import requests
+from chromadb import Documents, EmbeddingFunction, Embeddings
 from google import genai
+from google.api_core import retry
+from google.genai import types
+from pydantic import BaseModel
 from utils import (
-    add_offers_to_db,
-    create_offer_text,
+    check_crawl_permission,
+    fetch_html,
+    filter_unique_ids,
+    fix_json,
+    geocode_address,
     get_price_point,
+    get_public_transport_stations,
     get_secret,
-    setup_vector_database,
-    summarize_webpage,
+    is_retriable,
+    offer_to_text,
+    page_exists,
+    preprocess_html,
+    remove_url_parameters,
 )
 
 # bot page
@@ -19,6 +33,7 @@ from utils import (
 profile_name = os.getenv("AWS_PROFILE", None)
 
 chromadb_ip = os.getenv("CHROMADB_IP", "chromadb")
+
 
 telegram_token = api_key = get_secret(
     secret_id="telegram-274181059559", key="TOKEN", profile_name=profile_name
@@ -88,6 +103,152 @@ BASE_URL = (
     "12.636977,55.665739|12.626008,55.676732|12.636641,55.686489|12.654036,55.720127|"
     "12.602392,55.730897|12.555001,55.714439&page={page}"
 )
+
+
+class GeminiEmbeddingFunction(EmbeddingFunction):
+    def __init__(self, client, *args, **kwargs):
+        self.client = client
+        super().__init__(*args, **kwargs)
+
+    document_mode: bool = True
+
+    @retry.Retry(predicate=is_retriable)
+    def __call__(self, input: Documents) -> Embeddings:
+        task_type = "retrieval_document" if self.document_mode else "retrieval_query"
+        response = self.client.models.embed_content(
+            model="models/text-embedding-004",
+            contents=input,
+            config=types.EmbedContentConfig(task_type=task_type),
+        )
+        return [e.values for e in response.embeddings]
+
+
+def setup_vector_database(ip: int, client: any, port=8000):
+    DB_NAME = "real-estate-offers"
+    embed_fn = GeminiEmbeddingFunction(client)
+    embed_fn.document_mode = True
+    if ip:
+        chroma_client = chromadb.HttpClient(host=ip, port=port)
+    else:
+        chroma_client = chromadb.PersistentClient()
+
+    collection = chroma_client.get_or_create_collection(
+        name=DB_NAME, embedding_function=embed_fn
+    )
+    return collection
+
+
+def add_offers_to_db(collection, offers: list[dict], batch_size: int = 100):
+    documents = [offer_to_text(offer) for offer in offers]
+    ids = [offer.get("id") for offer in offers]
+    metadatas = offers
+
+    for i in range(0, len(documents), batch_size):
+        batch_docs = documents[i : i + batch_size]
+        batch_meta = metadatas[i : i + batch_size]
+        batch_ids = ids[i : i + batch_size]
+        collection.add(documents=batch_docs, metadatas=batch_meta, ids=batch_ids)
+        print(f"Added batch {i // batch_size + 1} with {len(batch_docs)} documents.")
+
+
+def create_offer_text(offer_dict) -> str:
+    if offer_dict.get("subways", False):
+        pattern = re.compile(r"(?<=subways:)([^;]+)(?=;)")
+        subways = pattern.findall(offer_dict["public_transport_text"])
+        subways_txt = ", ".join(subways)
+    else:
+        subways_txt = ""
+
+    offer_txt = """
+Address: {address}
+Size: {area_m2} m2, Rooms: {number_of_rooms}, Year: {year_built}, Energy: {energy_label}
+Price: {price:,} DKK ({price_point:.2%})
+Subway(s): {subways_txt}
+Url: {url}
+    """.format(**offer_dict, subways_txt=subways_txt)
+
+    return offer_txt
+
+
+def summarize_webpage(
+    url: str,
+    prompt: str,
+    example: str,
+    client: any,
+    max_tokens: int = 8192,
+) -> list[dict] | None:
+    if not check_crawl_permission(url):
+        raise ValueError(f"Crawling not permitted: {url}")
+
+    class Offers(BaseModel):
+        address: str
+        floor: str
+        price: int
+        area_m2: int
+        number_of_rooms: int
+        year_built: int
+        energy_label: str
+        url: str
+
+    class ListOfOffers(BaseModel):
+        offers: list[Offers]
+
+    html_content = preprocess_html(fetch_html(url))
+    response = client.models.generate_content(
+        model="gemini-2.0-flash",
+        config=types.GenerateContentConfig(
+            temperature=0.1,
+            response_mime_type="application/json",
+            response_schema=ListOfOffers,
+            max_output_tokens=max_tokens,
+        ),
+        contents=[
+            prompt.format(max_tokens=max_tokens, html_content=html_content),
+            example,
+        ],
+    )
+    results = fix_json(response.text)
+
+    if results:
+        print(f"Retrieved {len(results)} offers from crawler.")
+
+        # First, clean URLs
+        for offer in results:
+            if offer.get("url"):
+                offer["url"] = remove_url_parameters(offer.get("url"))
+
+        # Assign IDs now that URLs are cleaned
+        for offer in results:
+            if offer.get("url"):
+                offer["id"] = hashlib.shake_128(offer["url"].encode()).hexdigest(8)
+
+        # Filter out duplicates by ID
+        results = filter_unique_ids(results, id_key="id")
+        print(
+            f"Number of offers after removing duplicates and validating URLs: {len(results)}."
+        )
+
+        # Now process the remaining offers
+        for offer in results:
+            if offer.get("url") and page_exists(offer["url"]):
+                try:
+                    address = offer.get("address")
+                    lat, lon = geocode_address(address)
+                    offer["lat"], offer["long"] = lat, lon
+
+                    # Fetch stations around the new coordinates
+                    stations = get_public_transport_stations(lat=lat, lon=lon)
+                    offer.update(stations)
+                    print(f"Retrieved location for {address}")
+                except Exception as e:
+                    print(f"No geocode_address retrieved, {e}")
+
+                offer["create_date"] = datetime.datetime.today().timestamp()
+                time.sleep(1)
+
+        return results
+    else:
+        return None
 
 
 def main():
