@@ -3,13 +3,59 @@ import json
 import re
 import statistics
 import time
+from typing import List
 from urllib.parse import urljoin, urlparse
 from urllib.request import urlopen
 
 import boto3
+import chromadb
 import requests
 from bs4 import BeautifulSoup, Comment
 from google import genai
+from pydantic import HttpUrl, ValidationError
+
+
+def extract_adresse_urls(
+    html_content: str, base_url: str = "https://www.boligsiden.dk"
+) -> List[HttpUrl]:
+    """
+    Parse the given HTML and return a list of unique, validated HttpUrl objects
+    for all links matching the pattern '/adresse/...'.
+    Query parameters (e.g. '?udbud=...') are stripped off.
+
+    :param html_content: HTML page source to scan for /adresse/ links
+    :param base_url:     Base URL to resolve relative links against
+    :return:             List of unique HttpUrl instances
+    """
+
+    def remove_url_parameters(path: str) -> str:
+        return path.split("?", 1)[0]
+
+    soup = BeautifulSoup(html_content, "html.parser")
+    pattern = re.compile(r"^/adresse/")
+
+    # Collect unique hrefs
+    raw_paths = {tag["href"] for tag in soup.find_all("a", href=pattern)}
+
+    validated_urls = set()
+    for path in raw_paths:
+        clean_path = remove_url_parameters(path)
+        full = urljoin(base_url, clean_path)
+        try:
+            # Validate and canonicalize
+            validated_urls.add(HttpUrl(full))
+        except ValidationError:
+            # Skip any malformed URLs
+            continue
+
+    return list(validated_urls)
+
+
+def chromadb_check_if_document_exists(
+    doc_id: str, collection: chromadb.api.models.Collection.Collection
+) -> bool:
+    result = collection.get(ids=[doc_id])
+    return bool(result["ids"])
 
 
 def get_secret(secret_id, key=None, profile_name=None):
@@ -236,60 +282,130 @@ def filter_unique_ids(dict_list, id_key="id"):
     return result
 
 
-def page_exists(url: str, timeout: float = 5.0, max_bytes: int = 10_000) -> bool:
-    """
-    Returns True if the URL likely exists.  Returns False if:
-      - HTTP status is 404–499
-      - OR the first `max_bytes` of HTML contains Next.js/React 404 markers.
+def _preprocess_html(html: str) -> str:
+    """Core HTML cleanup: strip <head>, remove noise tags, keep JSON-LD, strip attrs, collapse whitespace."""
+    soup = BeautifulSoup(html, "html.parser")
 
-    Note: This only downloads up to `max_bytes` of the body on a 200, and then closes.
-    """
-    try:
-        # 1) Try a HEAD
-        resp = requests.head(url, allow_redirects=True, timeout=timeout)
-        # Some servers disallow HEAD: treat them like GET below
-        if resp.status_code >= 400 and resp.status_code < 500:
-            return False
-        if resp.status_code >= 500:
-            # Server error or gateway, we might retry or treat as unreachable
-            return False
-    except requests.RequestException:
-        return False
+    # 1) Drop head
+    if soup.head:
+        soup.head.decompose()
 
-    # If we got here with 200–399, but HEAD might have lied or returned 200 for a React 404,
-    # do a streamed GET and scan the first chunk(s):
+    # 2) Strip comments
+    for c in soup.find_all(string=lambda t: isinstance(t, Comment)):
+        c.extract()
+
+    # 3) Extract JSON-LD blocks
+    jsonld = []
+    for tag in soup.find_all("script", {"type": "application/ld+json"}):
+        if tag.string:
+            jsonld.append(tag.string.strip())
+        tag.decompose()
+
+    # 4) Remove boilerplate tags
+    for name in (
+        "script",
+        "style",
+        "meta",
+        "link",
+        "nav",
+        "header",
+        "footer",
+        "aside",
+        "form",
+        "input",
+        "button",
+        "select",
+        "option",
+        "textarea",
+        "canvas",
+        "iframe",
+        "noscript",
+    ):
+        for t in soup.find_all(name):
+            t.decompose()
+
+    # 5) Strip *all* attributes
+    for t in soup.find_all(True):
+        t.attrs = {}
+
+    # 6) Grab text and collapse whitespace
+    text = (soup.body or soup).get_text(separator=" ", strip=True)
+    text = re.sub(r"\s+", " ", text)
+
+    # 7) Prepend JSON-LD
+    for block in jsonld:
+        text = f"<JSON-LD>{block}</JSON-LD> " + text
+
+    return text
+
+
+def fetch_and_preprocess(
+    url: str, timeout: float = 5.0, max_bytes: int = 10_000, mode: str = "two_requests"
+) -> str | None:
+    """
+    Fetch + preprocess a page if it exists. Returns cleaned text or None on 404/client-react-404/etc.
+
+    Modes:
+      - "two_requests":  streamed sniff GET → full GET → preprocess
+      - "single_request": full streamed GET → sniff → preprocess
+    """
+    not_found_markers = [
+        '<html id="__next_error__">',
+        "NEXT_NOT_FOUND",
+        "Siden findes ikke!",
+    ]
+
     try:
-        resp = requests.get(url, allow_redirects=True, timeout=timeout, stream=True)
-        # If the GET itself returns a 404–499, treat as missing
-        if 400 <= resp.status_code < 500:
+        # -- Mode A: sniff first, then full fetch --
+        if mode == "two_requests":
+            resp = requests.get(url, timeout=timeout, stream=True)
+            if 400 <= resp.status_code < 500:
+                return None
+
+            # sniff first max_bytes
+            total = 0
+            buf = []
+            for chunk in resp.iter_content(1024, decode_unicode=True):
+                buf.append(chunk)
+                total += len(chunk)
+                if total >= max_bytes:
+                    break
+            snippet = "".join(buf)
             resp.close()
-            return False
 
-        # Read up to max_bytes total
-        total = 0
-        buffer = []
-        for chunk in resp.iter_content(chunk_size=1024, decode_unicode=True):
-            buffer.append(chunk)
-            total += len(chunk)
-            if total >= max_bytes:
-                break
-        snippet = "".join(buffer)
-        resp.close()
+            if any(marker in snippet for marker in not_found_markers):
+                return None
 
-        # Look for Next.js/React 404 markers:
-        not_found_markers = [
-            '<html id="__next_error__">',
-            "NEXT_NOT_FOUND",
-            "Siden findes ikke!",
-        ]
-        for marker in not_found_markers:
-            if marker in snippet:
-                return False
+            # full fetch
+            resp = requests.get(url, timeout=timeout)
+            resp.raise_for_status()
+            html = resp.text
 
-        return True
+        # -- Mode B: single streamed GET, full-buffered --
+        elif mode == "single_request":
+            resp = requests.get(url, timeout=timeout, stream=True)
+            if 400 <= resp.status_code < 500:
+                return None
+
+            # read entire body
+            buf = []
+            for chunk in resp.iter_content(1024, decode_unicode=True):
+                buf.append(chunk)
+            resp.close()
+            html = "".join(buf)
+
+            # sniff for 404 markers
+            if any(marker in html for marker in not_found_markers):
+                return None
+
+        else:
+            raise ValueError("mode must be 'two_requests' or 'single_request'")
 
     except requests.RequestException:
-        return False
+        return None
+
+    # preprocess and return
+    return _preprocess_html(html)
 
 
 def remove_url_parameters(url: str) -> str:
@@ -324,3 +440,39 @@ def get_price_point(offer: dict, collection: any, n_results=5) -> float:
 def get_similar_offers(offer: dict, collection: any) -> str:
     emb_results = collection.query(query_texts=[offer_to_text(offer)], n_results=5)
     return f"Offer:\n\n{offer}\n\nSimilar offers:\n\n{emb_results}"
+
+
+def create_offer_text(offer_dict) -> str:
+    if offer_dict.get("subways", False):
+        pattern = re.compile(r"(?<=subways:)([^;]+)(?=;)")
+        subways = pattern.findall(offer_dict["public_transport_text"])
+        subways_txt = ", ".join(subways)
+    else:
+        subways_txt = ""
+
+    offer_txt = """
+Address: {address}
+Size: {area_m2} m2, Rooms: {number_of_rooms}, Year: {year_built}, Energy: {energy_label}
+Price: {price:,} DKK ({price_point:.2%})
+Subway(s): {subways_txt}
+Url: {url}
+    """.format(**offer_dict, subways_txt=subways_txt)
+
+    return offer_txt
+
+
+def add_offers_to_db(
+    collection: chromadb.api.models.Collection.Collection,
+    offers: list[dict],
+    batch_size: int = 100,
+):
+    documents = [offer_to_text(offer) for offer in offers]
+    ids = [offer.get("id") for offer in offers]
+    metadatas = offers
+
+    for i in range(0, len(documents), batch_size):
+        batch_docs = documents[i : i + batch_size]
+        batch_meta = metadatas[i : i + batch_size]
+        batch_ids = ids[i : i + batch_size]
+        collection.add(documents=batch_docs, metadatas=batch_meta, ids=batch_ids)
+        print(f"Added batch {i // batch_size + 1} with {len(batch_docs)} documents.")

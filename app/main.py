@@ -1,16 +1,14 @@
 import datetime
 import hashlib
 import os
-import re
 import time
-
+from pydantic import BaseModel
 import chromadb
 import requests
 from chromadb import Documents, EmbeddingFunction, Embeddings
 from google import genai
 from google.api_core import retry
 from google.genai import types
-from pydantic import BaseModel
 from utils import (
     check_crawl_permission,
     fetch_html,
@@ -21,10 +19,13 @@ from utils import (
     get_public_transport_stations,
     get_secret,
     is_retriable,
-    offer_to_text,
-    page_exists,
     preprocess_html,
     remove_url_parameters,
+    extract_adresse_urls,
+    chromadb_check_if_document_exists,
+    create_offer_text,
+    # add_offers_to_db,
+    fetch_and_preprocess,
 )
 
 # bot page
@@ -50,26 +51,29 @@ genai_api_key = get_secret(
 client = genai.Client(api_key=genai_api_key)
 
 PROMPT_TEMPLATE = """
-You are an expert in extracting property listings from HTML. Your task is to precisely extract
-the following information about apartments for sale and represent the data in a JSON format.
-You *must* follow these *exact* instructions:
+You are an expert in extracting apartment listings from cleaned HTML text. Your task is to extract key structured information and present it in **valid JSON format**.
 
-1.  **Extract only apartment listings (Ejerlejlighed) for sale.**
-2.  **Address:** Extract the full address in the format `Street Name Number, PostalCode City, Country`,
-    e.g., `Vestergade 10, 1451 København K, Denmark`. If the floor/unit is mentioned in address, do not include it.
-3.  **Price:** Extract the price as an integer (e.g., `2798000`). If the price is not found, set value as `None`.
-4.  **Area (m2):** Extract the apartment area in square meters as an integer (e.g., `87`). If the area is not found, set value as `None`.
-5.  **Number of Rooms:** Extract number of rooms as integer. If the rooms are not found, set value as `None`.
-6.  **Year Built:** Extract the year the building was built as an integer (e.g., 1988). If not available, use `None`.
-7.  **Energy Label:** Extract energy label (e.g., 'A', 'B', 'C'). If not available, set value as `None`.
-8.  **URL:** Generate the URL for each listing using the pattern 'https://www.boligsiden.dk/adresse/<partial_url>' where the partial URL must match
-     the actual URL from the page. Make sure that offer url matches the offer and the address. Do not include any parameters after `?`
-9.  **If you find multiple URLs, make sure each URL belongs to its apartment's details.**
-10. **If the field has no values, use `None`**.
-11. **If the price is in the format of X.XXX.XXX, remove the '.' separators and use the number.**
-12. Do not include any additional text or notes in the JSON, only the JSON is desired.
+Please follow these instructions **precisely**:
 
-HTML:\n\n
+1. **Translate all text to English**, except for the **Address**, which must remain in its original language.
+2. **Create a detailed apartment description** based on the listing, covering:
+   - Natural light: Is it bright, which directions (e.g., east-facing)?
+   - Condition: Is it newly built, recently renovated, or older but well-maintained?
+   - View: What can be seen from the apartment? (e.g., courtyard, street, green area)
+   - Neighborhood: What is mentioned about the area? Is it calm, central, well-connected, or popular?
+3. **Address**: Extract in this format: `Street Name Number, PostalCode City, Country`  
+   - Do NOT include unit/floor/apartment numbers in the address
+4. **Price**: Extract as an integer, no commas or currency signs (e.g., `3250000`). If missing, use `null`.
+5. **Area (m2)**: Extract as an integer (e.g., `87`). If missing, use `null`.
+6. **Number of Rooms**: Extract total number of rooms as an integer. If missing, use `null`.
+7. **Year Built**: Extract the year the building was constructed (e.g., `2006`). If missing, use `null`.
+8. **Energy Label**: Extract as a single uppercase letter (`A`, `B`, etc.). If not available, use `null`.
+9. **Balcony**: Return `true` if a balcony or terrace is mentioned; otherwise, `false`.
+10. **URL**: Extract the full link to the listing.
+
+Ensure the output is **JSON only**, with no explanation or additional text.
+
+Cleaned HTMLs:
 
 {html_content}
 
@@ -77,18 +81,38 @@ JSON output:
 """
 
 
+class Offers(BaseModel):
+    address: str
+    description: str
+    floor: str
+    price: int
+    area_m2: int
+    number_of_rooms: int
+    year_built: int
+    energy_label: str
+    balcony: str
+    url: str
+
+
+class ListOfOffers(BaseModel):
+    offers: list[Offers]
+
+
 EXAMPLE_TEXT = """
 ```json
 [
     {
-        "address": "Vestergade 10, 1451 København K, Denmark",
-        "price": 2798000,
-        "area_m2": 87,
-        "number_of_rooms": 3,
-        "year_built": 1988,
-        "energy_label": "C",
-        "url": "https://www.boligsiden.dk/adresse/aalekistevej-172-3-31-2720-vanloese-01018672_172__3__31",
-    },
+        "address": "Engholmene, 2450 København SV, Denmark",
+        "description": "Apartment boasts abundant natural light and a spacious west-facing balcony overlooking the canal and marina. The contemporary interior is move-in ready, featuring high-quality materials. The neighborhood offers plenty of greenery, cafés, promenades, and convenient metro access.",
+        "floor": "5",
+        "price": 6195000,
+        "area_m2": 91,
+        "number_of_rooms": 2,
+        "year_built": 2019,
+        "energy_label": "A",
+        "balcony": "true",
+        "url": "https://www.boligsiden.dk/adresse/engholmene-2450-koebenhavn-sv-eksempel"
+    }
 ]
 """
 
@@ -138,38 +162,6 @@ def setup_vector_database(ip: int, client: any, port=8000):
     return collection
 
 
-def add_offers_to_db(collection, offers: list[dict], batch_size: int = 100):
-    documents = [offer_to_text(offer) for offer in offers]
-    ids = [offer.get("id") for offer in offers]
-    metadatas = offers
-
-    for i in range(0, len(documents), batch_size):
-        batch_docs = documents[i : i + batch_size]
-        batch_meta = metadatas[i : i + batch_size]
-        batch_ids = ids[i : i + batch_size]
-        collection.add(documents=batch_docs, metadatas=batch_meta, ids=batch_ids)
-        print(f"Added batch {i // batch_size + 1} with {len(batch_docs)} documents.")
-
-
-def create_offer_text(offer_dict) -> str:
-    if offer_dict.get("subways", False):
-        pattern = re.compile(r"(?<=subways:)([^;]+)(?=;)")
-        subways = pattern.findall(offer_dict["public_transport_text"])
-        subways_txt = ", ".join(subways)
-    else:
-        subways_txt = ""
-
-    offer_txt = """
-Address: {address}
-Size: {area_m2} m2, Rooms: {number_of_rooms}, Year: {year_built}, Energy: {energy_label}
-Price: {price:,} DKK ({price_point:.2%})
-Subway(s): {subways_txt}
-Url: {url}
-    """.format(**offer_dict, subways_txt=subways_txt)
-
-    return offer_txt
-
-
 def summarize_webpage(
     url: str,
     prompt: str,
@@ -179,19 +171,6 @@ def summarize_webpage(
 ) -> list[dict] | None:
     if not check_crawl_permission(url):
         raise ValueError(f"Crawling not permitted: {url}")
-
-    class Offers(BaseModel):
-        address: str
-        floor: str
-        price: int
-        area_m2: int
-        number_of_rooms: int
-        year_built: int
-        energy_label: str
-        url: str
-
-    class ListOfOffers(BaseModel):
-        offers: list[Offers]
 
     html_content = preprocess_html(fetch_html(url))
     response = client.models.generate_content(
@@ -278,13 +257,99 @@ def main():
             page_url = BASE_URL.format(page=page)
             print(page_url)
             try:
-                offers = summarize_webpage(
-                    page_url, PROMPT_TEMPLATE, EXAMPLE_TEXT, client
+                if not check_crawl_permission(page_url):
+                    raise ValueError(f"Crawling not permitted: {page_url}")
+                html_content = fetch_html(page_url)
+                urls = extract_adresse_urls(html_content)
+                urls_hash = [
+                    (url, hashlib.shake_128(str(url).encode()).hexdigest(8))
+                    for url in urls
+                ]
+                new_urls: list = []
+                for url, hash_id in urls_hash:
+                    if not chromadb_check_if_document_exists(hash_id, collection):
+                        new_urls += [url]
+
+                if not new_urls:
+                    continue
+
+                offers_source: list[dict] = []
+
+                for url in new_urls:
+                    text = fetch_and_preprocess(url, mode="two_requests")
+                    if text:
+                        offers_source += [{"url": url, "text": text}]
+
+                SOURCE_TEMPLATE = """
+                ---------------------
+                Offer #{i}
+                URL: {url}  
+                SOURCE:
+                {text}
+                """
+
+                SOURCE = ""
+
+                for i, offer in enumerate(offers_source):
+                    SOURCE += SOURCE_TEMPLATE.format(i=i + 1, **offer)
+
+                response = client.models.generate_content(
+                    model="gemini-2.0-flash",
+                    config=types.GenerateContentConfig(
+                        temperature=0.1,
+                        response_mime_type="application/json",
+                        response_schema=ListOfOffers,
+                        max_output_tokens=8192,
+                    ),
+                    contents=[
+                        PROMPT_TEMPLATE.format(max_tokens=8192, html_content=SOURCE),
+                        EXAMPLE_TEXT,
+                    ],
                 )
-            except BaseException:
+                results = fix_json(response.text)
+
+                if results:
+                    print(f"Retrieved {len(results)} offers from crawler.")
+
+                    # First, clean URLs
+                    for offer in results:
+                        if offer.get("url"):
+                            offer["url"] = remove_url_parameters(offer.get("url"))
+
+                    # Assign IDs now that URLs are cleaned
+                    for offer in results:
+                        if offer.get("url"):
+                            offer["id"] = hashlib.shake_128(
+                                offer["url"].encode()
+                            ).hexdigest(8)
+
+                    # Filter out duplicates by ID
+                    results = filter_unique_ids(results, id_key="id")
+                    print(
+                        f"Number of offers after removing duplicates and validating URLs: {len(results)}."
+                    )
+                    for offer in results:
+                        try:
+                            address = offer.get("address")
+                            lat, lon = geocode_address(address)
+                            offer["lat"], offer["long"] = lat, lon
+
+                            # Fetch stations around the new coordinates
+                            stations = get_public_transport_stations(lat=lat, lon=lon)
+                            offer.update(stations)
+                            print(f"Retrieved location for {address}")
+                        except Exception as e:
+                            print(f"No geocode_address retrieved, {e}")
+
+                        offer["create_date"] = datetime.datetime.today().timestamp()
+                        time.sleep(1)
+
+                offers = results
+            except BaseException as e:
+                print(e)
                 offers = []
 
-            if len(offers) > 5:
+            if len(offers) > 0:
                 all_results.extend(offers)
                 success = True
             else:
@@ -306,7 +371,10 @@ def main():
 
     # Add historical listings to vector database
     print(f"Adding {len(all_results_unique)} historical listings to vector database")
-    add_offers_to_db(collection, all_results_unique)
+
+    print(all_results_unique)
+
+    # add_offers_to_db(collection, all_results_unique)
 
     # get last offers
     now = datetime.datetime.now()
