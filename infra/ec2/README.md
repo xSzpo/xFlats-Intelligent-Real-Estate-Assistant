@@ -1,4 +1,4 @@
-aws secretsmanager restore-secret --secret-id chrome-db-274181059559
+aws secretsmanager restore-secret --secret-id chrome-db-011337673661
 
 
 Check the log of your user data script in:

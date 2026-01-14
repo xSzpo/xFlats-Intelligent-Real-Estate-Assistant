@@ -112,8 +112,11 @@ def check_crawl_permission(target_page: str) -> bool:
     robots_url = urljoin(base_url, "/robots.txt")
 
     try:
-        with urlopen(robots_url, timeout=5) as response:
-            robots_content = response.read().decode("utf-8", errors="ignore")
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        response = requests.get(robots_url, headers=headers, timeout=5)
+        robots_content = response.text
     except Exception as e:
         print(f"Error fetching {robots_url}: {e}")
         return True
@@ -151,7 +154,26 @@ def check_crawl_permission(target_page: str) -> bool:
 
 
 def fetch_html(url: str) -> str:
-    response = requests.get(url)
+    """Fetch HTML content with realistic browser headers to avoid blocking."""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9,pl;q=0.8",
+        "Accept-Encoding": "gzip, deflate, br",
+        "DNT": "1",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1",
+        "Cache-Control": "max-age=0",
+    }
+
+    # Add a small delay to be respectful
+    time.sleep(1)
+
+    response = requests.get(url, headers=headers, timeout=30)
     if response.status_code == 200:
         return response.text
     raise Exception(f"Failed to retrieve page. Status code: {response.status_code}")
@@ -175,9 +197,9 @@ def geocode_address(address: str) -> tuple[float, float]:
     url = "https://nominatim.openstreetmap.org/search"
     params = {"q": address, "format": "json", "limit": 1}
     headers = {
-        "User-Agent": "my_app/1.0 (youremail@example.com)"  # ← set your own contact info
+        "User-Agent": "xFlats-RealEstate-Scraper/1.0 (Warsaw apartment search bot)"
     }
-    resp = requests.get(url, params=params, headers=headers)
+    resp = requests.get(url, params=params, headers=headers, timeout=10)
     resp.raise_for_status()
     results = resp.json()
     if not results:
@@ -190,7 +212,7 @@ def get_public_transport_stations(
     lon: float = None,
     address: str = None,
     radius: int = 700,
-    max_retries: int = 5,
+    max_retries: int = 2,
 ):
     # If an address was passed, geocode it first:
     if address is not None:
@@ -201,7 +223,7 @@ def get_public_transport_stations(
 
     overpass_url = "http://overpass-api.de/api/interpreter"
     query = f"""
-    [out:json][timeout:25];
+    [out:json][timeout:15];
     (
       node(around:{radius},{lat},{lon})[public_transport=station];
       node(around:{radius},{lat},{lon})[railway=subway_entrance];
@@ -210,7 +232,7 @@ def get_public_transport_stations(
     out body;
     """
 
-    backoff_time = 30
+    backoff_time = 10
     station_types = {
         "ferry_terminals": "ferry_terminal",
         "light_rails": "light_rail",
@@ -221,7 +243,7 @@ def get_public_transport_stations(
 
     for attempt in range(max_retries):
         try:
-            response = requests.get(overpass_url, params={"data": query})
+            response = requests.get(overpass_url, params={"data": query}, timeout=20)
             response.raise_for_status()
             data = response.json()
 
@@ -355,10 +377,21 @@ def fetch_and_preprocess(
         "Siden findes ikke!",
     ]
 
+    # Browser-like headers to avoid blocking
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9,pl;q=0.8",
+        "Accept-Encoding": "gzip, deflate, br",
+        "DNT": "1",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+    }
+
     try:
         # -- Mode A: sniff first, then full fetch --
         if mode == "two_requests":
-            resp = requests.get(url, timeout=timeout, stream=True)
+            resp = requests.get(url, headers=headers, timeout=timeout, stream=True)
             if 400 <= resp.status_code < 500:
                 return None
 
@@ -377,13 +410,14 @@ def fetch_and_preprocess(
                 return None
 
             # full fetch
-            resp = requests.get(url, timeout=timeout)
+            time.sleep(0.5)  # Small delay between requests
+            resp = requests.get(url, headers=headers, timeout=timeout)
             resp.raise_for_status()
             html = resp.text
 
         # -- Mode B: single streamed GET, full-buffered --
         elif mode == "single_request":
-            resp = requests.get(url, timeout=timeout, stream=True)
+            resp = requests.get(url, headers=headers, timeout=timeout, stream=True)
             if 400 <= resp.status_code < 500:
                 return None
 
@@ -445,21 +479,40 @@ def get_similar_offers(offer: dict, collection: any) -> str:
 
 
 def create_offer_text(offer_dict) -> str:
-    if offer_dict.get("subways", False):
+    # Handle missing subway/transport data
+    if offer_dict.get("subways") and offer_dict.get("public_transport_text"):
         pattern = re.compile(r"(?<=subways:)([^;]+)(?=;)")
         subways = pattern.findall(offer_dict["public_transport_text"])
         subways_txt = ", ".join(subways)
     else:
-        subways_txt = ""
+        subways_txt = "N/A"
+
+    # Format rent information
+    rent = offer_dict.get("rent")
+    rent_str = f", Rent: {rent:,} PLN" if rent else ""
+
+    # Format floor information
+    floor = offer_dict.get("floor")
+    floor_str = f", Floor: {floor}" if floor else ""
 
     offer_txt = """
 Address: {address}
-Size: {area_m2} m2, Rooms: {number_of_rooms}, Year: {year_built}, Energy: {energy_label}
-Price: {price:,} DKK ({price_point:.2%})
-Subway(s): {subways_txt}
+Size: {area_m2} m2, Rooms: {number_of_rooms}, Year: {year_built}{floor_str}{rent_str}
+Price: {price:,} PLN ({price_point:.2%})
 Description: {description}
 Url: {url}
-    """.format(**offer_dict, subways_txt=subways_txt)
+    """.format(
+        address=offer_dict.get("address", "N/A"),
+        area_m2=offer_dict.get("area_m2", "N/A"),
+        number_of_rooms=offer_dict.get("number_of_rooms", "N/A"),
+        year_built=offer_dict.get("year_built", "N/A"),
+        floor_str=floor_str,
+        rent_str=rent_str,
+        price=offer_dict.get("price", 0),
+        price_point=offer_dict.get("price_point", 0),
+        description=offer_dict.get("description", "N/A"),
+        url=offer_dict.get("url", "N/A"),
+    )
 
     return offer_txt
 
@@ -471,7 +524,9 @@ def add_offers_to_db(
 ):
     documents = [offer_to_text(offer) for offer in offers]
     ids = [offer.get("id") for offer in offers]
-    metadatas = offers
+
+    # Filter out None values from metadata - ChromaDB only accepts str, int, float, bool
+    metadatas = [{k: v for k, v in offer.items() if v is not None} for offer in offers]
 
     for i in range(0, len(documents), batch_size):
         batch_docs = documents[i : i + batch_size]

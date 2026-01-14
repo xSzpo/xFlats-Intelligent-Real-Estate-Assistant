@@ -66,7 +66,7 @@ services:
       - PERSIST_DIRECTORY=/data
 
   property-bot:
-    image: 274181059559.dkr.ecr.eu-central-1.amazonaws.com/xflats-crawler:latest
+    image: 011337673661.dkr.ecr.eu-central-1.amazonaws.com/xflats-crawler-pl:latest
     restart: always
     networks:
       - net
@@ -93,7 +93,7 @@ WorkingDirectory=/home/ubuntu
 
 # Authenticate to ECR
 ExecStartPre=/bin/sh -c 'aws ecr get-login-password --region eu-central-1 \
-  | docker login --username AWS --password-stdin 274181059559.dkr.ecr.eu-central-1.amazonaws.com'
+  | docker login --username AWS --password-stdin 011337673661.dkr.ecr.eu-central-1.amazonaws.com'
 # Pull latest images
 ExecStartPre=/usr/bin/docker-compose pull
 # Start the Compose stack

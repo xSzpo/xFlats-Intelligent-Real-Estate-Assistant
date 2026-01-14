@@ -1,7 +1,7 @@
 """
-Real Estate Scraper for Danish Property Listings
+Real Estate Scraper for Warsaw Property Listings
 
-This module scrapes property listings from boligsiden.dk, processes them using
+This module scrapes property listings from otodom.pl, processes them using
 Google's Gemini AI, stores them in ChromaDB, and sends notifications via Telegram.
 """
 
@@ -13,6 +13,7 @@ from typing import Any
 
 import chromadb
 import requests
+from bs4 import BeautifulSoup
 from chromadb import Documents, EmbeddingFunction, Embeddings
 from google import genai
 from google.api_core import retry
@@ -23,7 +24,6 @@ from utils import (
     check_crawl_permission,
     chromadb_check_if_document_exists,
     create_offer_text,
-    extract_adresse_urls,
     fetch_and_preprocess,
     fetch_html,
     fix_json,
@@ -37,23 +37,26 @@ from utils import (
 
 # Configuration constants
 OFFER_VERSION = 2
-MAX_RETRIES = 3
+MAX_RETRIES = 2  # Reduced to minimize wasted API calls on failures
 DEFAULT_PAGES_TO_OPEN = 3
 DEFAULT_NUMBER_OF_ROOMS = 2
 GET_OFFERS_FROM_X_LAST_MIN = 5
 CHROMADB_DEFAULT_PORT = 8000
-DB_NAME = "real-estate-offers"
+DB_NAME = "real-estate-offers-warsaw"
+LISTINGS_PER_API_CALL = (
+    15  # Process 15 listings per API call (flash-lite has higher limits)
+)
+MAX_URLS_PER_PAGE = 15  # Limit URLs to prevent excessive API usage
+API_DELAY_SECONDS = 6  # Delay between API calls to respect 15 RPM limit (60s/15 = 4s, use 6s for safety)
 
 # API endpoints and templates
 BASE_URL = (
-    "https://www.boligsiden.dk/tilsalg/villa,ejerlejlighed?sortAscending=true"
-    "&mapBounds=7.780294,54.501948,15.330305,57.896401&priceMax=7000000"
-    "&polygon=12.555001,55.714439|12.544964,55.711152|12.535566,55.708713|12.523383,55.700403|"
-    "12.513564,55.690885|12.507604,55.674192|12.508089,55.656840|12.521769,55.648585|"
-    "12.534702,55.642731|12.564876,55.614388|12.591917,55.614270|12.599055,55.649692|"
-    "12.605518,55.649361|12.615303,55.649093|12.628699,55.649335|12.641590,55.649906|"
-    "12.636977,55.665739|12.626008,55.676732|12.636641,55.686489|12.654036,55.720127|"
-    "12.602392,55.730897|12.555001,55.714439&page={page}"
+    "https://www.otodom.pl/pl/wyniki/sprzedaz/mieszkanie/wiele-lokalizacji?limit=36"
+    "&ownerTypeSingleSelect=ALL&locations="
+    "%5Bmazowieckie%2Fwarszawa%2Fwarszawa%2Fwarszawa%2F"
+    "srodmiescie%2Fpowisle%2Cmazowieckie%2Fwarszawa%2Fwarszawa%2Fwarszawa%2Fsrodmiescie"
+    "%2Fsrodmiescie-poludniowe%5D&by=LATEST&direction=DESC&mapBounds="
+    "21.066349201274893%2C52.25105396894465%2C20.97234973673827%2C52.208541518407955&page={page}"
 )
 
 PROMPT_TEMPLATE = """
@@ -61,22 +64,20 @@ You are an expert in extracting apartment listings from cleaned HTML text. Your 
 
 Please follow these instructions **precisely**:
 
-1. **Translate all text to English**, except for the **Address**, which must remain in its original language.
-2. **Description**: in English, craft a neutral, informative overview covering:
-  - Flat layout and standout positives/negatives  
-  - Natural light (e.g. “bright, east-facing”)  
-  - Condition (e.g. “newly built”, “recently renovated”, “well-maintained older building”)  
-  - View (e.g. “courtyard”, “street-facing with greenery”)  
-  - Neighborhood vibe (e.g. “quiet residential”, “central and well-connected”) 
-3. **Address**: Extract in this format: `Street Name Number, PostalCode City, Country`  
+1. **Translate all text to English**, except for the **Address**, which must remain in its original Polish language.
+2. **Description**: Keep it concise (1-2 sentences). Only include information NOT already captured in other fields (address, price, size, rooms, year, floor). Focus on unique features like: furnishing status, elevator availability, specific amenities, or notable positives/negatives. Avoid repeating structured data.
+3. **Address**: Extract in this format: `Street Name Number, PostalCode City, Country` (keep in Polish)
    - Do NOT include unit/floor/apartment numbers in the address
-4. **Price**: Extract as an integer, no commas or currency signs (e.g., `3250000`). If missing, use `null`.
-5. **Area (m2)**: Extract as an integer (e.g., `87`). If missing, use `null`.
-6. **Number of Rooms**: Extract total number of rooms as an integer. If missing, use `null`.
-7. **Year Built**: Extract the year the building was constructed (e.g., `2006`). If missing, use `null`.
-8. **Energy Label**: Extract as a single uppercase letter (`A`, `B`, etc.). If not available, use `null`.
-9. **Balcony**: Return `true` if a balcony or terrace is mentioned; otherwise, `false`.
-10. **URL**: Extract the full link to the listing.
+   - If only district/neighborhood is available, use: `District, City, Country`
+4. **Price**: Extract as an integer in PLN, no commas or currency signs (e.g., `950000`). If missing, use `null`.
+5. **Rent** (Czynsz): Extract monthly rent/maintenance fee as integer in PLN (e.g., `800`). If missing, use `null`.
+6. **Area (m2)**: Extract as an integer or float (e.g., `58` or `58.5`). If missing, use `null`.
+7. **Number of Rooms**: Extract total number of rooms as an integer. If missing, use `null`.
+8. **Year Built**: Extract the year the building was constructed (e.g., `2015`). If missing, use `null`.
+9. **Energy Label**: Extract as a single uppercase letter (`A`, `B`, etc.). If not available, use `null`.
+10. **Balcony**: Return `true` if a balcony or terrace is mentioned; otherwise, `false`.
+11. **Floor**: Extract floor information in format "current/total" (e.g., `"2/5"` for 2nd floor of 5-story building) or just floor number (e.g., `"2"`, `"ground"`). If missing, use `null`.
+12. **URL**: Extract the full link to the listing.
 
 Ensure the output is **JSON only**, with no explanation or additional text.
 
@@ -99,16 +100,17 @@ EXAMPLE_TEXT = """
 ```json
 [
     {
-        "address": "Engholmene, 2450 København SV, Denmark",
-        "description": "Apartment boasts abundant natural light and a spacious west-facing balcony overlooking the canal and marina. The contemporary interior is move-in ready, featuring high-quality materials. The neighborhood offers plenty of greenery, cafés, promenades, and convenient metro access.",
-        "floor": "5",
-        "price": 6195000,
-        "area_m2": 91,
-        "number_of_rooms": 2,
-        "year_built": 2019,
-        "energy_label": "A",
-        "balcony": "true",
-        "url": "https://www.boligsiden.dk/adresse/engholmene-2450-koebenhavn-sv-eksempel"
+        "address": "Powiśle, Warszawa, Polska",
+        "description": "Furnished, move-in ready. West-facing balcony with courtyard view. No elevator.",
+        "floor": "5/7",
+        "price": 950000,
+        "rent": 850,
+        "area_m2": 58,
+        "number_of_rooms": 3,
+        "year_built": 2015,
+        "energy_label": "B",
+        "balcony": true,
+        "url": "https://www.otodom.pl/pl/oferta/example-listing-12345"
     }
 ]
 """
@@ -119,13 +121,14 @@ class Offers(BaseModel):
 
     address: str
     description: str
-    floor: str
-    price: int
-    area_m2: int
-    number_of_rooms: int
-    year_built: int
-    energy_label: str
-    balcony: str
+    floor: str | None
+    price: int | None
+    rent: int | None
+    area_m2: float | None
+    number_of_rooms: int | None
+    year_built: int | None
+    energy_label: str | None
+    balcony: bool | None
     url: str
 
 
@@ -150,17 +153,17 @@ class Config:
 
         # Initialize API credentials
         self.telegram_token = get_secret(
-            secret_id="telegram-274181059559",
+            secret_id="telegram-011337673661",
             key="TOKEN",
             profile_name=self.profile_name,
         )
         self.telegram_chat_id = get_secret(
-            secret_id="telegram-274181059559",
+            secret_id="telegram-011337673661",
             key="CHAT_ID",
             profile_name=self.profile_name,
         )
         self.genai_api_key = get_secret(
-            secret_id="gemini-274181059559",
+            secret_id="gemini-011337673661",
             key="GOOGLE_API_KEY",
             profile_name=self.profile_name,
         )
@@ -185,8 +188,59 @@ class GeminiEmbeddingFunction(EmbeddingFunction):
         return [e.values for e in response.embeddings]
 
 
+def extract_otodom_urls(html_content: str) -> list[str]:
+    """
+    Extract property listing URLs from otodom.pl search results page.
+
+    Args:
+        html_content: HTML content of the search results page
+
+    Returns:
+        List of property listing URLs
+    """
+    soup = BeautifulSoup(html_content, "html.parser")
+    urls = []
+
+    # Otodom.pl uses data-cy="listing-item-link" or similar patterns
+    # Try multiple selectors to find listing links
+    link_selectors = [
+        'a[data-cy="listing-item-link"]',
+        'a[href*="/pl/oferta/"]',
+        "a.css-rvjxyq",  # Common class for listing links
+    ]
+
+    for selector in link_selectors:
+        links = soup.select(selector)
+        for link in links:
+            href = link.get("href", "")
+            if href and "/pl/oferta/" in href:
+                # Make absolute URL if relative
+                if href.startswith("/"):
+                    href = f"https://www.otodom.pl{href}"
+                elif not href.startswith("http"):
+                    href = f"https://www.otodom.pl/{href}"
+
+                # Clean URL (remove query parameters except essential ones)
+                if "?" in href:
+                    href = href.split("?")[0]
+
+                if href not in urls:
+                    urls.append(href)
+
+    # Remove duplicates while preserving order
+    seen = set()
+    unique_urls = []
+    for url in urls:
+        if url not in seen:
+            seen.add(url)
+            unique_urls.append(url)
+
+    print(f"DEBUG: extract_otodom_urls found {len(unique_urls)} URLs")
+    return unique_urls
+
+
 class RealEstateScraper:
-    """Main scraper class for Danish real estate listings."""
+    """Main scraper class for Warsaw real estate listings."""
 
     def __init__(self, config: Config):
         self.config = config
@@ -215,7 +269,6 @@ class RealEstateScraper:
 
     def _generate_url_hash(self, url: str | Any) -> str:
         """Generate a unique hash for a given URL."""
-        # Convert to string in case it's a Pydantic HttpUrl object
         url_str = str(url)
         return hashlib.shake_128(url_str.encode()).hexdigest(8)
 
@@ -228,16 +281,17 @@ class RealEstateScraper:
             raise ValueError(f"Crawling not permitted: {page_url}")
 
         html_content = fetch_html(page_url)
-        urls = extract_adresse_urls(html_content)
+        urls = extract_otodom_urls(html_content)
+        print(f"DEBUG: Found {len(urls)} total URLs on page")
 
         new_urls = []
         for url in urls:
-            # Convert to string in case it's a Pydantic HttpUrl object
             url_str = str(url)
             url_hash = self._generate_url_hash(url_str)
             if not chromadb_check_if_document_exists(url_hash, self.collection):
                 new_urls.append(url_str)
 
+        print(f"DEBUG: {len(new_urls)} URLs are new (not in database)")
         return new_urls
 
     def _process_offers_with_ai(
@@ -251,27 +305,55 @@ class RealEstateScraper:
         for i, offer in enumerate(offers_source, 1):
             source_content += SOURCE_TEMPLATE.format(i=i, **offer)
 
-        response = self.client.models.generate_content(
-            model="gemini-2.0-flash",
-            config=types.GenerateContentConfig(
-                temperature=0.1,
-                response_mime_type="application/json",
-                response_schema=ListOfOffers,
-                max_output_tokens=8192,
-            ),
-            contents=[
-                PROMPT_TEMPLATE.format(html_content=source_content),
-                EXAMPLE_TEXT,
-            ],
-        )
+        try:
+            response = self.client.models.generate_content(
+                model="gemini-2.5-flash-lite",
+                config=types.GenerateContentConfig(
+                    temperature=0.1,
+                    response_mime_type="application/json",
+                    response_schema=ListOfOffers,
+                    max_output_tokens=8192,
+                ),
+                contents=[
+                    PROMPT_TEMPLATE.format(html_content=source_content),
+                    EXAMPLE_TEXT,
+                ],
+            )
+        except Exception as e:
+            error_str = str(e)
+            print(f"ERROR: Gemini API call failed: {e}")
 
-        return fix_json(response.text) or []
+            # If quota exceeded, check if we should wait and retry
+            if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                # Extract retry delay if available (usually in format "retry in Xs")
+                import re
+
+                retry_match = re.search(r"retry in ([0-9.]+)s", error_str)
+                if retry_match:
+                    retry_seconds = float(retry_match.group(1))
+                    print(
+                        f"Quota exceeded. API suggests waiting {retry_seconds:.0f}s. Skipping this batch."
+                    )
+                else:
+                    print(
+                        "Daily quota exceeded (20 requests/day). Wait until quota resets."
+                    )
+            return []
+
+        result = fix_json(response.text)
+
+        if result and isinstance(result, dict) and "offers" in result:
+            return result["offers"]
+        elif result and isinstance(result, list):
+            return result
+
+        print("WARNING: No valid offers extracted from API response!")
+        return []
 
     def _enrich_offer_data(self, offer: dict[str, Any]) -> None:
         """Enrich offer data with geocoding and transport information."""
         # Clean URL and generate ID
         if offer.get("url"):
-            # Convert to string in case it's a Pydantic HttpUrl object
             url_str = str(offer["url"])
             offer["url"] = remove_url_parameters(url_str)
             offer["id"] = self._generate_url_hash(offer["url"])
@@ -283,13 +365,16 @@ class RealEstateScraper:
         try:
             address = offer.get("address")
             if address:
-                lat, lon = geocode_address(address)
-                offer["lat"], offer["long"] = lat, lon
+                # For Warsaw addresses, ensure "Polska" or "Poland" is included
+                if "Polska" not in address and "Poland" not in address:
+                    address = f"{address}, Polska"
 
-                # Fetch public transport stations
-                stations = get_public_transport_stations(lat=lat, lon=lon)
-                offer.update(stations)
-                print(f"Retrieved location data for {address}")
+                # Strip 'ul.' prefix which causes geocoding failures
+                geocode_address_clean = address.replace("ul. ", "").replace("ul.", "")
+
+                lat, lon = geocode_address(geocode_address_clean)
+                offer["lat"], offer["long"] = lat, lon
+                print(f"Retrieved geocode for {address}")
         except Exception as e:
             print(f"Failed to retrieve geocode data: {e}")
 
@@ -303,34 +388,78 @@ class RealEstateScraper:
                     print(f"No new URLs found on page {page}")
                     return []
 
-                print(f"Found {len(new_urls)} new URLs on page {page}")
+                print(f"Processing {len(new_urls)} URLs from page {page}")
 
-                # Fetch and preprocess content
+                # Fetch and preprocess all URLs
                 offers_source = []
                 for url in new_urls:
                     text = fetch_and_preprocess(url, mode="two_requests")
                     if text:
                         offers_source.append({"url": url, "text": text})
 
-                # Process with AI
-                offers = self._process_offers_with_ai(offers_source)
+                if not offers_source:
+                    print("No valid content found")
+                    return []
 
-                if offers:
-                    print(f"Retrieved {len(offers)} offers from page {page}")
+                print(f"Fetched content for {len(offers_source)} listings")
+
+                # Process with AI in batches to avoid overwhelming the model
+                all_offers = []
+                for batch_start in range(0, len(offers_source), LISTINGS_PER_API_CALL):
+                    batch = offers_source[
+                        batch_start : batch_start + LISTINGS_PER_API_CALL
+                    ]
+                    batch_num = (batch_start // LISTINGS_PER_API_CALL) + 1
+                    total_batches = (
+                        len(offers_source) - 1
+                    ) // LISTINGS_PER_API_CALL + 1
+
+                    print(
+                        f"Processing batch {batch_num}/{total_batches} ({len(batch)} listings)..."
+                    )
+                    batch_offers = self._process_offers_with_ai(batch)
+
+                    if batch_offers:
+                        all_offers.extend(batch_offers)
+                        print(
+                            f"Extracted {len(batch_offers)} offers from batch {batch_num}"
+                        )
+
+                    # Delay between batches to respect RPM limits (15 RPM = 1 request per 4s minimum)
+                    if batch_num < total_batches:
+                        time.sleep(API_DELAY_SECONDS)
+
+                if all_offers:
+                    print(
+                        f"Retrieved total of {len(all_offers)} offers from page {page}"
+                    )
 
                     # Enrich each offer with additional data
-                    for offer in offers:
+                    for offer in all_offers:
                         self._enrich_offer_data(offer)
-                        time.sleep(1)  # Rate limiting
+                        time.sleep(1)  # Rate limiting for geocoding API
 
-                return offers
+                return all_offers
 
             except Exception as e:
+                error_msg = str(e)
                 print(
                     f"Error processing page {page}, attempt {attempt}/{MAX_RETRIES}: {e}"
                 )
-                if attempt < MAX_RETRIES:
-                    time.sleep(attempt)  # Exponential backoff
+
+                # If it's a quota/rate limit error, wait longer
+                if (
+                    "429" in error_msg
+                    or "RESOURCE_EXHAUSTED" in error_msg
+                    or "quota" in error_msg.lower()
+                ):
+                    wait_time = 60 * attempt  # 60s, 120s, 180s
+                    print(
+                        f"Rate limit hit. Waiting {wait_time} seconds before retry..."
+                    )
+                    time.sleep(wait_time)
+                elif attempt < MAX_RETRIES:
+                    time.sleep(attempt * 2)  # Exponential backoff for other errors
                 else:
                     print(f"Failed to process page {page} after {MAX_RETRIES} attempts")
                     return []
@@ -352,12 +481,13 @@ class RealEstateScraper:
 
     def scrape_historical_listings(self) -> list[dict[str, Any]]:
         """Scrape historical listings from multiple pages."""
-        print("Starting data collection process")
+        print("Starting data collection process for Warsaw apartments")
         all_results = []
 
         for page in range(1, self.config.number_of_pages_to_open + 1):
             page_results = self._process_page_with_retry(page)
             all_results.extend(page_results)
+            time.sleep(2)  # Be respectful to the server
 
         print(f"Collected {len(all_results)} total listings")
 
@@ -379,7 +509,6 @@ class RealEstateScraper:
             where={
                 "$and": [
                     {"create_date": {"$gt": cutoff_time}},
-                    {"subways": {"$eq": True}},
                     {"number_of_rooms": {"$gte": self.config.number_of_rooms}},
                 ]
             },

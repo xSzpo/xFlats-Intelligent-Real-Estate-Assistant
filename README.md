@@ -57,7 +57,7 @@ Finding a great apartment in Copenhagen can be a race against time. xFlats AI Ag
 
 ```text
 ┌──────────────┐    CloudWatch    ┌──────────────┐    SQS     ┌──────────────┐
-│  Scheduler   │  ────────────▶   │  Crawler     │  ────────▶ │  Notifier    │
+│  Scheduler   │  ────────────X   │ X Crawler    │  ────────X │ X Notifier   │
 │(30 min cron) │                  │(AWS Lambda)  │            │(AWS Lambda)  │
 └──────────────┘                  └──────────────┘            └──────────────┘
        │                                    │                        │

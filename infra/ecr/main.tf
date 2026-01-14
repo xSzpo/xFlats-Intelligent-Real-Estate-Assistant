@@ -5,7 +5,7 @@ provider "aws" {
 
 terraform {
   backend "s3" {
-    bucket  = "terraform-274181059559"
+    bucket  = "terraform-011337673661"
     key     = "state/ecr.tfstate"
     region  = "eu-central-1"
     encrypt = true
@@ -14,7 +14,7 @@ terraform {
 
 
 resource "aws_ecr_repository" "xflats_crawler" {
-  name = "xflats-crawler"
+  name = "xflats-crawler-pl"
 }
 
 resource "aws_ecr_lifecycle_policy" "xflats_crawler" {
