@@ -40,7 +40,9 @@ OFFER_VERSION = 2
 MAX_RETRIES = 2  # Reduced to minimize wasted API calls on failures
 DEFAULT_PAGES_TO_OPEN = 3
 DEFAULT_NUMBER_OF_ROOMS = 2
-GET_OFFERS_FROM_X_LAST_MIN = 5
+GET_OFFERS_FROM_X_LAST_MIN = (
+    35  # Check for offers from last 35 min (covers cron cycle + processing time)
+)
 CHROMADB_DEFAULT_PORT = 8000
 DB_NAME = "real-estate-offers-warsaw"
 LISTINGS_PER_API_CALL = (
@@ -235,7 +237,6 @@ def extract_otodom_urls(html_content: str) -> list[str]:
             seen.add(url)
             unique_urls.append(url)
 
-    print(f"DEBUG: extract_otodom_urls found {len(unique_urls)} URLs")
     return unique_urls
 
 
@@ -282,7 +283,6 @@ class RealEstateScraper:
 
         html_content = fetch_html(page_url)
         urls = extract_otodom_urls(html_content)
-        print(f"DEBUG: Found {len(urls)} total URLs on page")
 
         new_urls = []
         for url in urls:
@@ -291,7 +291,6 @@ class RealEstateScraper:
             if not chromadb_check_if_document_exists(url_hash, self.collection):
                 new_urls.append(url_str)
 
-        print(f"DEBUG: {len(new_urls)} URLs are new (not in database)")
         return new_urls
 
     def _process_offers_with_ai(
