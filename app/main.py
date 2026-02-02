@@ -29,7 +29,6 @@ from utils import (
     fix_json,
     geocode_address,
     get_price_point,
-    get_public_transport_stations,
     get_secret,
     is_retriable,
     remove_url_parameters,
@@ -60,6 +59,17 @@ BASE_URL = (
     "%2Fsrodmiescie-poludniowe%5D&by=LATEST&direction=DESC&mapBounds="
     "21.066349201274893%2C52.25105396894465%2C20.97234973673827%2C52.208541518407955&page={page}"
 )
+URLS = [
+    "https://www.otodom.pl/pl/wyniki/sprzedaz/mieszkanie/cala-polska?distanceRadius=200&placeId=EhxNb2tvdG93c2thLCBXYXJzemF3YSwgUG9sYW5kIi4qLAoUChIJda0NfeXMHkcR7L6Sd1NEGagSFAoSCQGfhppmzB5HEfzT6ogqvvBy&limit=48&ownerTypeSingleSelect=ALL&by=LATEST&direction=DESC",
+    "https://www.otodom.pl/pl/wyniki/sprzedaz/mieszkanie/cala-polska?distanceRadius=200&placeId=EiFwbGFjIFpiYXdpY2llbGEsIFdhcnN6YXdhLCBQb2xza2EiLiosChQKEgmtkxz95cweRxFGXhIa9lSLfhIUChIJAZ-GmmbMHkcR_NPqiCq-8HI&limit=48&ownerTypeSingleSelect=ALL&by=LATEST&direction=DESC",
+    "https://www.otodom.pl/pl/wyniki/sprzedaz/mieszkanie/cala-polska?distanceRadius=200&placeId=EiVwbGFjIFRyemVjaCBLcnp5xbx5LCBXYXJzemF3YSwgUG9sc2thIi4qLAoUChIJv_4Ov_DMHkcRm2NwCF96cMgSFAoSCQGfhppmzB5HEfzT6ogqvvBy&limit=48&ownerTypeSingleSelect=ALL&by=LATEST&direction=DESC",
+    "https://www.otodom.pl/pl/wyniki/sprzedaz/mieszkanie/cala-polska?distanceRadius=200&placeId=EhdSYWRuYSwgV2Fyc3phd2EsIFBvbHNrYSIuKiwKFAoSCde_MB1czB5HEWAAdCtVCRPuEhQKEgkBn4aaZsweRxH80-qIKr7wcg&limit=48&ownerTypeSingleSelect=ALL&by=LATEST&direction=DESC",
+    "https://www.otodom.pl/pl/wyniki/sprzedaz/mieszkanie/cala-polska?distanceRadius=200&placeId=EhdEb2JyYSwgV2Fyc3phd2EsIFBvbGFuZCIuKiwKFAoSCWG6LwlczB5HESljV7Y7kcsCEhQKEgkBn4aaZsweRxH80-qIKr7wcg&limit=48&ownerTypeSingleSelect=ALL&by=LATEST&direction=DESC",
+    "https://www.otodom.pl/pl/wyniki/sprzedaz/mieszkanie/cala-polska?distanceRadius=200&placeId=ChIJ5Wpy21vMHkcRcoBshj3qoT8&limit=48&ownerTypeSingleSelect=ALL&by=LATEST&direction=DESC",
+    "https://www.otodom.pl/pl/wyniki/sprzedaz/mieszkanie/cala-polska?distanceRadius=200&placeId=Eh5MZXN6Y3p5xYRza2EsIFdhcnN6YXdhLCBQb2xhbmQiLiosChQKEglfHbCsXsweRxF3C_D5GnoF8RIUChIJAZ-GmmbMHkcR_NPqiCq-8HI&limit=48&ownerTypeSingleSelect=ALL&by=LATEST&direction=DESC",
+    "https://www.otodom.pl/pl/wyniki/sprzedaz/mieszkanie/cala-polska?distanceRadius=200&placeId=EhdTb2xlYywgV2Fyc3phd2EsIFBvbHNrYSIuKiwKFAoSCZWIUub-zB5HEdrtcc9N_qQsEhQKEgkBn4aaZsweRxH80-qIKr7wcg&limit=48&ownerTypeSingleSelect=ALL&by=LATEST&direction=DESC",
+]
+
 
 PROMPT_TEMPLATE = """
 You are an expert in extracting apartment listings from cleaned HTML text. Your task is to extract key structured information and present it in **valid JSON format**.
@@ -273,15 +283,14 @@ class RealEstateScraper:
         url_str = str(url)
         return hashlib.shake_128(url_str.encode()).hexdigest(8)
 
-    def _extract_new_urls(self, page: int) -> list[str]:
-        """Extract new URLs from a given page that don't exist in the database."""
-        page_url = BASE_URL.format(page=page)
-        print(f"Processing page {page}: {page_url}")
+    def _extract_new_urls(self, url: str) -> list[str]:
+        """Extract new URLs from a given search URL that don't exist in the database."""
+        print(f"Processing URL: {url}")
 
-        if not check_crawl_permission(page_url):
-            raise ValueError(f"Crawling not permitted: {page_url}")
+        if not check_crawl_permission(url):
+            raise ValueError(f"Crawling not permitted: {url}")
 
-        html_content = fetch_html(page_url)
+        html_content = fetch_html(url)
         urls = extract_otodom_urls(html_content)
 
         new_urls = []
@@ -377,17 +386,17 @@ class RealEstateScraper:
         except Exception as e:
             print(f"Failed to retrieve geocode data: {e}")
 
-    def _process_page_with_retry(self, page: int) -> list[dict[str, Any]]:
-        """Process a single page with retry logic."""
+    def _process_url_with_retry(self, url: str) -> list[dict[str, Any]]:
+        """Process a single search URL with retry logic."""
         for attempt in range(1, MAX_RETRIES + 1):
             try:
-                new_urls = self._extract_new_urls(page)
+                new_urls = self._extract_new_urls(url)
 
                 if not new_urls:
-                    print(f"No new URLs found on page {page}")
+                    print(f"No new URLs found for: {url}")
                     return []
 
-                print(f"Processing {len(new_urls)} URLs from page {page}")
+                print(f"Processing {len(new_urls)} listings from search URL")
 
                 # Fetch and preprocess all URLs
                 offers_source = []
@@ -430,7 +439,7 @@ class RealEstateScraper:
 
                 if all_offers:
                     print(
-                        f"Retrieved total of {len(all_offers)} offers from page {page}"
+                        f"Retrieved total of {len(all_offers)} offers from search URL"
                     )
 
                     # Enrich each offer with additional data
@@ -442,9 +451,7 @@ class RealEstateScraper:
 
             except Exception as e:
                 error_msg = str(e)
-                print(
-                    f"Error processing page {page}, attempt {attempt}/{MAX_RETRIES}: {e}"
-                )
+                print(f"Error processing URL, attempt {attempt}/{MAX_RETRIES}: {e}")
 
                 # If it's a quota/rate limit error, wait longer
                 if (
@@ -460,7 +467,7 @@ class RealEstateScraper:
                 elif attempt < MAX_RETRIES:
                     time.sleep(attempt * 2)  # Exponential backoff for other errors
                 else:
-                    print(f"Failed to process page {page} after {MAX_RETRIES} attempts")
+                    print(f"Failed to process URL after {MAX_RETRIES} attempts")
                     return []
 
         return []
@@ -479,13 +486,14 @@ class RealEstateScraper:
         return unique_offers
 
     def scrape_historical_listings(self) -> list[dict[str, Any]]:
-        """Scrape historical listings from multiple pages."""
+        """Scrape historical listings from multiple search URLs."""
         print("Starting data collection process for Warsaw apartments")
         all_results = []
 
-        for page in range(1, self.config.number_of_pages_to_open + 1):
-            page_results = self._process_page_with_retry(page)
-            all_results.extend(page_results)
+        for i, url in enumerate(URLS, 1):
+            print(f"\n=== Processing search URL {i}/{len(URLS)} ===")
+            url_results = self._process_url_with_retry(url)
+            all_results.extend(url_results)
             time.sleep(2)  # Be respectful to the server
 
         print(f"Collected {len(all_results)} total listings")
