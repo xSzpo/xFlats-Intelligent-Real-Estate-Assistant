@@ -563,10 +563,17 @@ class RealEstateScraper:
                 f"Adding {len(historical_offers)} historical listings to vector database"
             )
             add_offers_to_db(self.collection, historical_offers)
-
-        # Get and send recent offers
-        recent_offers = self.get_recent_offers()
-        self.send_telegram_notifications(recent_offers)
+            
+            # Filter newly scraped offers by room criteria before sending notifications
+            filtered_offers = [
+                offer for offer in historical_offers 
+                if offer.get("number_of_rooms", 0) >= self.config.number_of_rooms
+            ]
+            
+            # Send notifications only for newly scraped offers (prevents duplicates)
+            self.send_telegram_notifications(filtered_offers)
+        else:
+            print("No new offers to send")
 
 
 def main() -> None:
