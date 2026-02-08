@@ -193,7 +193,7 @@ class GeminiEmbeddingFunction(EmbeddingFunction):
     def __call__(self, input: Documents) -> Embeddings:
         task_type = "retrieval_document" if self.document_mode else "retrieval_query"
         response = self.client.models.embed_content(
-            model="models/text-embedding-004",
+            model="models/text-embedding-005",
             contents=input,
             config=types.EmbedContentConfig(task_type=task_type),
         )
@@ -563,13 +563,14 @@ class RealEstateScraper:
                 f"Adding {len(historical_offers)} historical listings to vector database"
             )
             add_offers_to_db(self.collection, historical_offers)
-            
+
             # Filter newly scraped offers by room criteria before sending notifications
             filtered_offers = [
-                offer for offer in historical_offers 
+                offer
+                for offer in historical_offers
                 if offer.get("number_of_rooms", 0) >= self.config.number_of_rooms
             ]
-            
+
             # Send notifications only for newly scraped offers (prevents duplicates)
             self.send_telegram_notifications(filtered_offers)
         else:
