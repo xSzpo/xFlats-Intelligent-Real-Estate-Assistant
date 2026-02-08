@@ -45,7 +45,7 @@ GET_OFFERS_FROM_X_LAST_MIN = (
 CHROMADB_DEFAULT_PORT = 8000
 DB_NAME = "real-estate-offers-warsaw"
 LISTINGS_PER_API_CALL = (
-    15  # Process 15 listings per API call (flash-lite has higher limits)
+    15  # Process 15 listings per API call (gemini-2.5-flash has high limits)
 )
 MAX_URLS_PER_PAGE = 15  # Limit URLs to prevent excessive API usage
 API_DELAY_SECONDS = 6  # Delay between API calls to respect 15 RPM limit (60s/15 = 4s, use 6s for safety)
@@ -315,7 +315,7 @@ class RealEstateScraper:
 
         try:
             response = self.client.models.generate_content(
-                model="gemini-2.5-flash-lite",
+                model="gemini-2.5-flash",
                 config=types.GenerateContentConfig(
                     temperature=0.1,
                     response_mime_type="application/json",
