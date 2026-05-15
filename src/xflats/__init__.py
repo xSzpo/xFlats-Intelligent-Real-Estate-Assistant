@@ -1,1 +1,1 @@
-"""xFlats — Intelligent Real Estate Assistant"""
+"""xFlats — Intelligent Real Estate Assistant."""

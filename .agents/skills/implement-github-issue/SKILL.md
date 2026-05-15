@@ -41,8 +41,15 @@ User says "implement issue #N", "work on #N", or provides a GitHub issue URL/num
 ### Phase 5 — Implement
 
 1. Work through plan items sequentially
-2. Update plan doc status table as items complete
-3. Test changes: run `python main.py` (dry run) or verify Docker build
+2. **All new/modified Python code MUST follow the [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html)**:
+   - Google-style docstrings on all public functions/classes
+   - Full type annotations (args + return)
+   - `logging` module instead of `print()`
+   - Specific exception types, not bare `except Exception`
+   - `# TODO(username): description` format
+   - snake_case / CamelCase naming conventions
+3. Update plan doc status table as items complete
+4. Test changes: run `python main.py` (dry run) or verify Docker build
 
 ### Phase 6 — PR
 

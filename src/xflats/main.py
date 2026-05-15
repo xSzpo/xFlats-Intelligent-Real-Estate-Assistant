@@ -1,5 +1,4 @@
-"""
-Real Estate Scraper for Danish Property Listings
+"""Real Estate Scraper for Danish Property Listings.
 
 Entry point — scrapes boligsiden.dk, extracts via Gemini AI,
 stores in ChromaDB, sends Telegram notifications.
@@ -7,9 +6,11 @@ stores in ChromaDB, sends Telegram notifications.
 
 import datetime
 import hashlib
+import logging
 import time
 from typing import Any
 
+import requests
 from google import genai
 
 from xflats.config.secrets import Config
@@ -33,6 +34,8 @@ from xflats.utils import (
     remove_url_parameters,
 )
 
+logger = logging.getLogger(__name__)
+
 # Configuration constants
 OFFER_VERSION = 2
 MAX_RETRIES = 3
@@ -54,7 +57,12 @@ BASE_URL = (
 class RealEstateScraper:
     """Main scraper class for Danish real estate listings."""
 
-    def __init__(self, config: Config):
+    def __init__(self, config: Config) -> None:
+        """Initialize scraper with configuration.
+
+        Args:
+            config: Application configuration containing API keys and settings.
+        """
         self.config = config
         self.client = genai.Client(api_key=config.genai_api_key)
         self.collection = setup_vector_database(
@@ -62,17 +70,42 @@ class RealEstateScraper:
         )
 
     def _generate_url_hash(self, url: str) -> str:
+        """Generate a short hash for a URL.
+
+        Args:
+            url: The URL to hash.
+
+        Returns:
+            A 16-character hex digest of the URL.
+        """
         url_str = str(url)
         return hashlib.shake_128(url_str.encode()).hexdigest(8)
 
     def _extract_new_urls(self, page: int) -> list[str]:
+        """Extract URLs from a listing page that are not yet in the database.
+
+        Args:
+            page: The page number to scrape.
+
+        Returns:
+            A list of new listing URLs not already stored.
+
+        Raises:
+            ValueError: If crawling is not permitted for the page URL.
+            requests.RequestException: If the HTTP request fails.
+        """
         page_url = BASE_URL.format(page=page)
-        print(f"Processing page {page}: {page_url}")
+        logger.info("Processing page %d: %s", page, page_url)
 
         if not check_crawl_permission(page_url):
             raise ValueError(f"Crawling not permitted: {page_url}")
 
-        html_content = fetch_html(page_url)
+        try:
+            html_content = fetch_html(page_url)
+        except requests.RequestException:
+            logger.exception("Failed to fetch page %d", page)
+            raise
+
         urls = extract_adresse_urls(html_content)
 
         new_urls = []
@@ -85,6 +118,11 @@ class RealEstateScraper:
         return new_urls
 
     def _enrich_offer_data(self, offer: dict[str, Any]) -> None:
+        """Enrich an offer dict with computed fields and geolocation data.
+
+        Args:
+            offer: Mutable offer dictionary to enrich in-place.
+        """
         if offer.get("url"):
             url_str = str(offer["url"])
             offer["url"] = remove_url_parameters(url_str)
@@ -100,19 +138,27 @@ class RealEstateScraper:
                 offer["lat"], offer["long"] = lat, lon
                 stations = get_public_transport_stations(lat=lat, lon=lon)
                 offer.update(stations)
-                print(f"Retrieved location data for {address}")
-        except Exception as e:
-            print(f"Failed to retrieve geocode data: {e}")
+                logger.info("Retrieved location data for %s", address)
+        except Exception as e:  # noqa: BLE001
+            logger.error("Failed to retrieve geocode data: %s", e)
 
     def _process_page_with_retry(self, page: int) -> list[dict[str, Any]]:
+        """Process a single listing page with retry logic.
+
+        Args:
+            page: The page number to process.
+
+        Returns:
+            A list of extracted offer dictionaries, empty on failure.
+        """
         for attempt in range(1, MAX_RETRIES + 1):
             try:
                 new_urls = self._extract_new_urls(page)
                 if not new_urls:
-                    print(f"No new URLs found on page {page}")
+                    logger.info("No new URLs found on page %d", page)
                     return []
 
-                print(f"Found {len(new_urls)} new URLs on page {page}")
+                logger.info("Found %d new URLs on page %d", len(new_urls), page)
 
                 offers_source = []
                 for url in new_urls:
@@ -123,28 +169,46 @@ class RealEstateScraper:
                 offers = process_offers_with_ai(self.client, offers_source)
 
                 if offers:
-                    print(f"Retrieved {len(offers)} offers from page {page}")
+                    logger.info("Retrieved %d offers from page %d", len(offers), page)
                     for offer in offers:
                         self._enrich_offer_data(offer)
                         time.sleep(1)
 
                 return offers
 
-            except Exception as e:
-                print(
-                    f"Error processing page {page}, attempt {attempt}/{MAX_RETRIES}: {e}"
+            except requests.RequestException as e:
+                logger.error(
+                    "Error processing page %d, attempt %d/%d: %s",
+                    page,
+                    attempt,
+                    MAX_RETRIES,
+                    e,
                 )
                 if attempt < MAX_RETRIES:
                     time.sleep(attempt)
                 else:
-                    print(f"Failed to process page {page} after {MAX_RETRIES} attempts")
+                    logger.error(
+                        "Failed to process page %d after %d attempts",
+                        page,
+                        MAX_RETRIES,
+                    )
                     return []
 
         return []
 
-    def _deduplicate_offers(self, offers: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        seen_ids = set()
-        unique_offers = []
+    def _deduplicate_offers(
+        self, offers: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Remove duplicate offers based on their ID.
+
+        Args:
+            offers: List of offer dictionaries, possibly with duplicates.
+
+        Returns:
+            A deduplicated list preserving first-seen order.
+        """
+        seen_ids: set[str] = set()
+        unique_offers: list[dict[str, Any]] = []
         for offer in offers:
             offer_id = offer.get("id")
             if offer_id and offer_id not in seen_ids:
@@ -153,23 +217,30 @@ class RealEstateScraper:
         return unique_offers
 
     def scrape_historical_listings(self) -> list[dict[str, Any]]:
-        print("Starting data collection process")
-        all_results = []
+        """Scrape all configured listing pages and collect results.
+
+        Returns:
+            A deduplicated list of offer dictionaries from all pages.
+        """
+        logger.info("Starting data collection process")
+        all_results: list[dict[str, Any]] = []
         for page in range(1, self.config.number_of_pages_to_open + 1):
             page_results = self._process_page_with_retry(page)
             all_results.extend(page_results)
 
-        print(f"Collected {len(all_results)} total listings")
+        logger.info("Collected %d total listings", len(all_results))
         unique_results = self._deduplicate_offers(all_results)
-        print(f"Found {len(unique_results)} unique listings")
+        logger.info("Found %d unique listings", len(unique_results))
         return unique_results
 
     def run(self) -> None:
+        """Execute the full scraping, storage, and notification pipeline."""
         historical_offers = self.scrape_historical_listings()
 
         if historical_offers:
-            print(
-                f"Adding {len(historical_offers)} historical listings to vector database"
+            logger.info(
+                "Adding %d historical listings to vector database",
+                len(historical_offers),
             )
             add_offers_to_db(self.collection, historical_offers)
 
@@ -189,12 +260,17 @@ class RealEstateScraper:
 
 
 def main() -> None:
+    """Run the real estate scraper application."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
     try:
         config = Config()
         scraper = RealEstateScraper(config)
         scraper.run()
-    except Exception as e:
-        print(f"Fatal error in main execution: {e}")
+    except Exception as e:  # noqa: BLE001
+        logger.error("Fatal error in main execution: %s", e)
         raise
 
 

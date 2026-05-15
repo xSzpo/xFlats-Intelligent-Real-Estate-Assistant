@@ -13,7 +13,8 @@
 
 ## Tech Stack
 
-- **Python 3.11** — scraping, AI extraction, vector search, notifications
+- **Python 3.14** — scraping, AI extraction, vector search, notifications
+- **Code style**: [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html) — all code must follow it (docstrings, type annotations, logging, exceptions, naming)
 - **Google Gemini** — structured data extraction (gemini-2.0-flash) + embeddings (text-embedding-004)
 - **ChromaDB** — vector database (hosted on EC2)
 - **Telegram Bot API** — notification delivery

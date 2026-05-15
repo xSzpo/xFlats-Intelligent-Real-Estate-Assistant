@@ -2,13 +2,28 @@
 
 from __future__ import annotations
 
+import logging
 import time
+from typing import Any
 
 import requests
 
+logger = logging.getLogger(__name__)
+
 
 def geocode_address(address: str) -> tuple[float, float]:
-    """Use OSM Nominatim to turn a street address into (lat, lon)."""
+    """Use OSM Nominatim to turn a street address into (lat, lon).
+
+    Args:
+        address: Free-text street address to geocode.
+
+    Returns:
+        A ``(latitude, longitude)`` tuple of floats.
+
+    Raises:
+        ValueError: If Nominatim returns no results for the address.
+        requests.HTTPError: If the HTTP request fails.
+    """
     url = "https://nominatim.openstreetmap.org/search"
     params: dict[str, str | int] = {"q": address, "format": "json", "limit": 1}
     headers = {
@@ -29,6 +44,19 @@ def get_public_transport_stations(
     radius: int = 700,
     max_retries: int = 5,
 ) -> dict[str, bool | str]:
+    """Query Overpass API for public-transport stations near a point.
+
+    Args:
+        lat: Latitude of the search centre.
+        lon: Longitude of the search centre.
+        address: Street address (geocoded automatically when provided).
+        radius: Search radius in metres.
+        max_retries: Maximum number of retry attempts on failure.
+
+    Returns:
+        A dict with boolean flags per transport type and a
+        ``public_transport_text`` summary string.
+    """
     if address is not None:
         lat, lon = geocode_address(address)
 
@@ -90,12 +118,12 @@ def get_public_transport_stations(
             return result
 
         except requests.exceptions.RequestException as e:
-            print(f"Attempt {attempt + 1}/{max_retries} failed: {e}")
+            logger.warning("Attempt %d/%d failed: %s", attempt + 1, max_retries, e)
             if attempt < max_retries - 1:
                 time.sleep(backoff_time)
                 backoff_time *= 2
             else:
-                print(f"Failed after {max_retries} attempts: {e}")
+                logger.warning("Failed after %d attempts: %s", max_retries, e)
                 return {
                     "ferry_terminals": False,
                     "light_rails": False,
@@ -116,10 +144,27 @@ def get_public_transport_stations(
 
 
 def remove_url_parameters(url: str) -> str:
+    """Strip query parameters from a URL.
+
+    Args:
+        url: Full URL string.
+
+    Returns:
+        The URL without any query-string portion.
+    """
     return url.split("?", 1)[0]
 
 
-def filter_unique_ids(dict_list: list[dict], id_key: str = "id") -> list[dict]:
+def filter_unique_ids(dict_list: list[dict[str, Any]], id_key: str = "id") -> list[dict[str, Any]]:
+    """De-duplicate a list of dicts by a given key.
+
+    Args:
+        dict_list: Input list of dictionaries.
+        id_key: Key whose value is used as the unique identifier.
+
+    Returns:
+        A new list containing only the first occurrence of each unique id.
+    """
     seen_ids = set()
     result = []
     for item in dict_list:
