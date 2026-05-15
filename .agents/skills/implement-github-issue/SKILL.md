@@ -1,3 +1,8 @@
+---
+name: implement-github-issue
+description: End-to-end GitHub issue implementation for xFlats. From issue fetch to plan doc to implementation to PR. Use when user says "implement issue", "work on issue", or provides a GitHub issue number.
+---
+
 # Skill: implement-github-issue
 
 End-to-end GitHub issue implementation for xFlats. From issue fetch to merged PR.

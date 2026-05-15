@@ -1,3 +1,8 @@
+---
+name: pr-address-comments
+description: Address PR review feedback on xFlats PRs. Use when user says "address comments", "fix review comments", or "handle PR feedback".
+---
+
 # Skill: pr-address-comments
 
 Address PR review feedback on xFlats PRs.
