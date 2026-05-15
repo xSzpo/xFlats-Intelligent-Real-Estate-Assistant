@@ -6,6 +6,13 @@ cache
 lambda-crawler/.aws-sam
 __*
 
+# Python / uv
+.venv/
+dist/
+*.egg-info/
+.env
+.env.*
+
 # OpenCode
 .opencode/node_modules
 .opencode/package.json

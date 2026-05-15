@@ -17,17 +17,17 @@
 #     reason: <why this mapping exists>
 
 # --- Python application ---
-- source: "app/*.py"
+- source: "src/xflats/**/*.py"
   docs:
     - README.md
   reason: "App logic changes may affect setup/usage docs"
 
-- source: "app/requirements.txt"
+- source: "pyproject.toml"
   docs:
     - README.md
-  reason: "Dependency changes affect setup instructions"
+  reason: "Dependency/tool config changes affect setup instructions"
 
-- source: "app/Dockerfile"
+- source: "docker/Dockerfile"
   docs:
     - README.md
     - AGENTS.md

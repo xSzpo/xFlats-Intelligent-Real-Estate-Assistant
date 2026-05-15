@@ -1,7 +1,0 @@
-google-genai==1.7.0
-google-api-core
-osmnx
-chromadb
-boto3
-requests
-beautifulsoup4
