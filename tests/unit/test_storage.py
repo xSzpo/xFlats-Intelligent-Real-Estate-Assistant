@@ -1,5 +1,6 @@
 """Tests for xflats.storage.chromadb."""
 
+
 from xflats.storage.chromadb import (
     add_offers_to_db,
     check_if_document_exists,

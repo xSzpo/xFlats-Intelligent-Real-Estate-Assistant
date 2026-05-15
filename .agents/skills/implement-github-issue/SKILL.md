@@ -22,8 +22,9 @@ User says "implement issue #N", "work on #N", or provides a GitHub issue URL/num
 ### Phase 2 — Git Safeguard
 
 1. Check `git status` — must be clean
-2. `git checkout main && git pull`
-3. Create branch using naming convention (see **Branch & PR Naming** below)
+2. `GIT_SSH_COMMAND="ssh -i ~/.ssh/id_rsa_priv" git fetch origin main`
+3. `git checkout main && git merge origin/main`
+4. Create branch using naming convention (see **Branch & PR Naming** below)
 
 ### Phase 3 — Gather Context
 
