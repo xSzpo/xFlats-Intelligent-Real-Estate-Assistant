@@ -23,7 +23,7 @@ User says "implement issue #N", "work on #N", or provides a GitHub issue URL/num
 
 1. Check `git status` — must be clean
 2. `git checkout main && git pull`
-3. Create branch: `feat/<short-description>` or `fix/<short-description>`
+3. Create branch using naming convention (see **Branch & PR Naming** below)
 
 ### Phase 3 — Gather Context
 
@@ -46,10 +46,44 @@ User says "implement issue #N", "work on #N", or provides a GitHub issue URL/num
 ### Phase 6 — PR
 
 1. `git add` changed files
-2. Commit with message: `feat: <description> (#<N>)` or `fix: <description> (#<N>)`
+2. Commit: `<type>: <description> (#<N>)` — see **Branch & PR Naming** for type list
 3. Push: `GIT_SSH_COMMAND="ssh -i ~/.ssh/id_rsa_priv" git push -u origin <branch>`
-4. Create PR: `gh pr create --repo xSzpo/xFlats-Intelligent-Real-Estate-Assistant --title "<title>" --body "<body>"`
+4. Create PR: `gh pr create --repo xSzpo/xFlats-Intelligent-Real-Estate-Assistant --title "<type>: <description> (#<N>)" --body "<body>"`
 5. Link issue in PR body: `Closes #<N>`
+
+## Branch & PR Naming
+
+### Branch name
+
+| Pattern | When |
+|---------|------|
+| `<type>/<issue-number>/<short-description>` | Linked to a GitHub issue |
+| `<type>/<short-description>` | No GitHub issue |
+
+Examples: `feat/9/google-style-guide`, `fix/12/empty-stats-guard`, `chore/update-deps`
+
+### Allowed types (Conventional Commits)
+
+| Type | Meaning |
+|------|---------|
+| `feat` | New feature or user-facing capability |
+| `fix` | Bug fix |
+| `chore` | Maintenance, deps, config — no behavior change |
+| `refactor` | Code restructure — no behavior change, no bug fix |
+| `docs` | Documentation only |
+| `test` | Adding or fixing tests |
+| `ci` | CI/CD pipeline changes |
+| `perf` | Performance improvement |
+| `style` | Formatting, whitespace — no logic change |
+| `build` | Build system or external dependency changes |
+
+### PR title
+
+Same type prefix as branch: `<type>: <description> (#<N>)` (or without `(#N)` if no issue).
+
+### Commit message
+
+Same format as PR title: `<type>: <description> (#<N>)`
 
 ## Verification
 
