@@ -64,30 +64,45 @@ class Config:
 
     Reads environment variables for infrastructure settings and fetches
     sensitive credentials (Telegram, Gemini API keys) from Secrets Manager.
+    The ``REGION`` environment variable selects which region config to use,
+    which in turn determines the correct secret IDs.
     """
 
     def __init__(self) -> None:
         """Initialize configuration from environment variables and secrets."""
+        from xflats.config.regions import get_region_config
+
         self.profile_name: str | None = os.getenv("AWS_PROFILE", None)
+        self.region: str = os.getenv("REGION", "waw")
+        self.region_config = get_region_config(self.region)
         self.chromadb_ip: str = os.getenv("CHROMADB_IP", "chromadb")
         self.number_of_pages_to_open: int = int(
-            os.getenv("NUMBER_OF_PAGES_TO_OPEN", DEFAULT_PAGES_TO_OPEN)
+            os.getenv(
+                "NUMBER_OF_PAGES_TO_OPEN",
+                self.region_config.pages_to_open,
+            )
         )
         self.number_of_rooms: int = int(
-            os.getenv("NUMBER_OF_ROOMS", DEFAULT_NUMBER_OF_ROOMS)
+            os.getenv("NUMBER_OF_ROOMS", self.region_config.min_rooms)
         )
-        self.telegram_token: str = str(get_secret(
-            secret_id="telegram-274181059559",
-            key="TOKEN",
-            profile_name=self.profile_name,
-        ))
-        self.telegram_chat_id: str = str(get_secret(
-            secret_id="telegram-274181059559",
-            key="CHAT_ID",
-            profile_name=self.profile_name,
-        ))
-        self.genai_api_key: str = str(get_secret(
-            secret_id="gemini-274181059559",
-            key="GOOGLE_API_KEY",
-            profile_name=self.profile_name,
-        ))
+        self.telegram_token: str = str(
+            get_secret(
+                secret_id=self.region_config.telegram_secret_id,
+                key="TOKEN",
+                profile_name=self.profile_name,
+            )
+        )
+        self.telegram_chat_id: str = str(
+            get_secret(
+                secret_id=self.region_config.telegram_secret_id,
+                key="CHAT_ID",
+                profile_name=self.profile_name,
+            )
+        )
+        self.genai_api_key: str = str(
+            get_secret(
+                secret_id=self.region_config.gemini_secret_id,
+                key="GOOGLE_API_KEY",
+                profile_name=self.profile_name,
+            )
+        )

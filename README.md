@@ -1,6 +1,6 @@
 # xFlats AI Agent
 
-**An intelligent real-estate assistant for finding apartment deals in Copenhagen via Telegram**
+**An intelligent real-estate assistant for finding apartment deals in Copenhagen and Warsaw via Telegram**
 
 ---
 
@@ -20,9 +20,10 @@
 
 ## Overview
 
-Finding a great apartment in Copenhagen can be a race against time. xFlats AI Agent automates the hunt by:
+Finding a great apartment in Copenhagen or Warsaw can be a race against time. xFlats AI Agent automates the hunt by:
 
-- Scraping top Danish real-estate sites every 30 minutes
+- Scraping top real-estate sites every 30 minutes (boligsiden.dk for Copenhagen, otodom.pl for Warsaw)
+- Supporting multiple regions via a `RegionConfig` data class — each region defines its own site, search URLs, AI models, and notification preferences
 - Extracting and structuring listings with Google Gemini
 - Storing embeddings in a ChromaDB vector database on AWS EC2
 - Alerting you via Telegram when a listing matches your criteria
@@ -33,7 +34,8 @@ Finding a great apartment in Copenhagen can be a race against time. xFlats AI Ag
 
 - **Automated Scraping**
   - Docker cron job runs every 30 minutes on EC2
-  - Scrapes boligsiden.dk listings
+  - Scrapes boligsiden.dk (Copenhagen) and otodom.pl (Warsaw)
+  - Multi-region support via `RegionConfig` (`config/regions.py`)
 - **AI-driven Extraction**
   - Gemini 2.0 Flash pulls structured data from HTML
   - Pydantic models validate each offer
@@ -54,9 +56,10 @@ Finding a great apartment in Copenhagen can be a race against time. xFlats AI Ag
 │                   EC2 Instance                       │
 │                                                      │
 │  ┌────────────┐    ┌─────────────┐    ┌───────────┐ │
-│  │ Docker Cron │───▶│  Scraper    │───▶│  Gemini   │ │
+│  │ Docker Cron │───▶│  Scrapers   │───▶│  Gemini   │ │
 │  │ (30 min)    │    │ boligsiden  │    │ Extraction│ │
-│  └────────────┘    └─────────────┘    └─────┬─────┘ │
+│  └────────────┘    │ otodom      │    └─────┬─────┘ │
+│                    └─────────────┘          │       │
 │                                              │       │
 │                                              ▼       │
 │                    ┌─────────────┐    ┌───────────┐  │
@@ -69,7 +72,7 @@ Finding a great apartment in Copenhagen can be a race against time. xFlats AI Ag
                      Telegram Group
 ```
 
-**Flow:** Cron triggers scraper → Gemini extracts structured data → stored in ChromaDB → new matches sent via Telegram.
+**Flow:** Cron triggers per-region scrapers → Gemini extracts structured data → stored in ChromaDB (one collection per region) → new matches sent via Telegram.
 
 ---
 
@@ -110,11 +113,13 @@ xFlats-Intelligent-Real-Estate-Assistant/
 ├── src/xflats/
 │   ├── main.py                 # Entry point (RealEstateScraper)
 │   ├── utils.py                # Shared helpers (geocoding, transit)
-│   ├── scraper/boligsiden.py   # Web scraping
+│   ├── scraper/boligsiden.py   # Web scraping (Copenhagen)
+│   ├── scraper/otodom.py       # Web scraping (Warsaw)
 │   ├── extraction/gemini.py    # AI extraction
 │   ├── storage/chromadb.py     # Vector DB ops
 │   ├── notifications/telegram.py
-│   └── config/secrets.py       # AWS Secrets Manager
+│   ├── config/secrets.py       # AWS Secrets Manager
+│   └── config/regions.py       # Multi-region configuration
 ├── tests/
 │   ├── conftest.py
 │   └── unit/                   # Unit tests
