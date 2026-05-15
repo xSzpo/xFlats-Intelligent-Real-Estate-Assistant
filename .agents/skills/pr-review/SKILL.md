@@ -24,7 +24,7 @@ gh pr diff <N> --repo xSzpo/xFlats-Intelligent-Real-Estate-Assistant
 
 Review changes by type:
 
-**Python code** (`src/xflats/**/*.py`, `app/*.py`):
+**Python code** (`src/xflats/**/*.py`, `tests/**/*.py`):
 - Type safety (Pydantic models correct?)
 - Error handling (API calls, network, parsing)
 - Secret handling (no hardcoded keys)
@@ -37,16 +37,29 @@ Review changes by type:
 - Cost implications
 - Variable validation
 
-**Docker** (`docker/Dockerfile`, `app/Dockerfile`):
+**Docker** (`docker/Dockerfile`):
 - Base image pinned?
 - Cron schedule correct?
 - Layer ordering efficient?
 
-### 3. Post Review to GitHub
+### 3. Check Doc-Update Registry
+
+**Always check `doc-update-registry.yml` against the PR diff.**
+
+1. Read `doc-update-registry.yml`
+2. For each changed file in the PR, match against `source` globs
+3. For each match, check if the linked `docs` were also updated in the PR
+4. If a linked doc was NOT updated — flag as **Medium** finding:
+   ```
+   **[Medium]** `doc-update-registry.yml` requires `<doc>` to be reviewed when `<source>` changes. Either update the doc or confirm no change needed.
+   ```
+5. If a linked doc WAS updated — verify the doc content is consistent with the source changes. Flag inaccuracies as **Medium**.
+
+### 4. Post Review to GitHub
 
 **Always post findings as GitHub PR review comments — both inline and summary.**
 
-#### 3a. Inline comments
+#### 4a. Inline comments
 
 Use `gh api` to submit a PR review with inline comments on specific files/lines:
 
@@ -75,13 +88,13 @@ Tips:
 - Group related findings into one inline comment when on adjacent lines
 - Use `side=RIGHT` for lines in the new version of the file
 
-#### 3b. Summary comment
+#### 4b. Summary comment
 
 The review body (passed as `--field body=`) should contain:
 1. Overall verdict: **Approve** / **Request Changes** / **Comment**
 2. Counts by severity
 3. Any findings that couldn't be attached inline (lines outside diff)
 
-### 4. Also show findings to user
+### 5. Also show findings to user
 
 After posting to GitHub, display a concise summary in the conversation so user sees findings without leaving the terminal.
