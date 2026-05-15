@@ -13,7 +13,7 @@
 
 ## Tech Stack
 
-- **Python 3.10/3.11** — scraping, AI extraction, vector search, notifications
+- **Python 3.11** — scraping, AI extraction, vector search, notifications
 - **Google Gemini** — structured data extraction (gemini-2.0-flash) + embeddings (text-embedding-004)
 - **ChromaDB** — vector database (hosted on EC2)
 - **Telegram Bot API** — notification delivery
@@ -25,13 +25,21 @@
 
 ### Key Commands
 ```
-# App
-cd app && pip install -r requirements.txt
-python main.py
+# Install deps
+uv sync --dev
+
+# Run app
+uv run python -m xflats.main
+
+# Task runner
+just test          # pytest with coverage
+just lint          # ruff + mypy
+just format        # ruff format
+just docker        # docker build
+just tf-plan       # terraform plan all modules
 
 # Docker
-cd app && docker build -t xflats .
-docker run xflats
+docker build -f docker/Dockerfile -t xflats .
 
 # Terraform
 cd infra/<module> && terraform init && terraform plan
@@ -138,11 +146,12 @@ When a Worker changes source files, it MUST consult `doc-update-registry.yml` to
 - Run: `python --version`, `pip list`, `pip show *`
 - Git: `status`, `log`, `diff`, `branch`, `fetch`
 - Docker: `images`, `ps`
+- `just --list`
 - Terraform: `init`, `plan`, `validate`, `fmt`, `output`, `state list`, `state show`
 - `gh pr list`, `gh pr view`, `gh pr status`, `gh pr diff`, `gh pr checks`
 
 ### Ask Before Doing
-- Write to: `app/`, `infra/`, any `.py` or `.tf` file
+- Write to: `src/`, `infra/`, `tests/`, any `.py` or `.tf` file
 - Run: `python main.py`, `docker build`, `docker run`
 - Git: `add`, `commit`, `push`, `checkout`, `merge`
 - `gh pr create`

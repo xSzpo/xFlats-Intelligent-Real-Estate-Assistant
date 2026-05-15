@@ -50,3 +50,32 @@
   docs:
     - AGENTS.md
   reason: "Permission/MCP changes affect agent capabilities"
+
+# --- Testing ---
+- source: "tests/**"
+  docs:
+    - README.md
+  reason: "Test changes affect testing instructions and coverage info"
+
+# --- Tooling ---
+- source: "justfile"
+  docs:
+    - README.md
+    - AGENTS.md
+  reason: "Task runner changes affect dev workflow commands"
+
+- source: ".pre-commit-config.yaml"
+  docs:
+    - README.md
+  reason: "Pre-commit hook changes affect contributor setup"
+
+# --- CI/CD ---
+- source: ".github/workflows/**"
+  docs:
+    - README.md
+  reason: "CI/CD pipeline changes affect deployment and PR check docs"
+
+# --- Git config ---
+- source: ".gitignore"
+  docs: []
+  reason: "Gitignore changes rarely need doc updates"

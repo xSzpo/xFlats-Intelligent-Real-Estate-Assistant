@@ -19,7 +19,7 @@ def extract_adresse_urls(html_content: str, base_url: str = "https://www.boligsi
 
     validated_urls = set()
     for path in raw_paths:
-        clean_path = remove_url_parameters(path)
+        clean_path = remove_url_parameters(str(path))
         full = urljoin(base_url, clean_path)
         try:
             validated_urls.add(HttpUrl(full))
@@ -124,9 +124,9 @@ def fetch_and_preprocess(url: str, timeout: float = 5.0, max_bytes: int = 10_000
             if 400 <= resp.status_code < 500:
                 return None
             total = 0
-            buf = []
+            buf: list[str] = []
             for chunk in resp.iter_content(1024, decode_unicode=True):
-                buf.append(chunk)
+                buf.append(str(chunk))
                 total += len(chunk)
                 if total >= max_bytes:
                     break
@@ -142,11 +142,11 @@ def fetch_and_preprocess(url: str, timeout: float = 5.0, max_bytes: int = 10_000
             resp = requests.get(url, timeout=timeout, stream=True)
             if 400 <= resp.status_code < 500:
                 return None
-            buf = []
+            buf2: list[str] = []
             for chunk in resp.iter_content(1024, decode_unicode=True):
-                buf.append(chunk)
+                buf2.append(str(chunk))
             resp.close()
-            html = "".join(buf)
+            html = "".join(buf2)
             if any(marker in html for marker in not_found_markers):
                 return None
         else:

@@ -10,10 +10,10 @@
 | Step | Status | Notes |
 |------|--------|-------|
 | Context gathered | done | |
-| Plan approved | pending | |
-| Implementation batch 1 | pending | Steps 1-3 |
-| Implementation batch 2 | pending | Steps 4-8 |
-| Implementation batch 3 | pending | Steps 9-10 |
+| Plan approved | done | |
+| Implementation batch 1 | done | src layout, pyproject.toml, docker/, notebooks/ |
+| Implementation batch 2 | done | tests, justfile, pre-commit, CI/CD, .gitignore |
+| Implementation batch 3 | pending | README update, architecture doc |
 
 ## Problem Statement
 

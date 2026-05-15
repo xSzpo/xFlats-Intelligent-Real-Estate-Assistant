@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --dev
+      - run: uv run ruff check src/ tests/
+      - run: uv run mypy src/
+      - run: uv run pytest tests/ --cov=src/xflats --cov-report=term-missing
+
+  terraform-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - name: Create dummy SSH key for Terraform file() references
+        run: mkdir -p ~/.ssh && ssh-keygen -t rsa -f ~/.ssh/id_rsa -N "" -q
+      - name: Validate all Terraform modules
+        run: |
+          for dir in infra/*/; do
+            echo "=== $dir ==="
+            terraform -chdir="$dir" init -backend=false
+            terraform -chdir="$dir" validate
+          done
