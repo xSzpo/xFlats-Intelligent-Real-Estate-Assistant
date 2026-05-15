@@ -5,3 +5,8 @@ __pycache__
 cache
 lambda-crawler/.aws-sam
 __*
+
+# OpenCode
+.opencode/node_modules
+.opencode/package.json
+.opencode/bun.lock
