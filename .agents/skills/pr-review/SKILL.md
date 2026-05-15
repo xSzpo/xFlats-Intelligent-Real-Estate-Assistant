@@ -24,7 +24,7 @@ gh pr diff <N> --repo xSzpo/xFlats-Intelligent-Real-Estate-Assistant
 
 Review changes by type:
 
-**Python code** (`app/*.py`):
+**Python code** (`src/xflats/**/*.py`, `app/*.py`):
 - Type safety (Pydantic models correct?)
 - Error handling (API calls, network, parsing)
 - Secret handling (no hardcoded keys)
@@ -37,17 +37,30 @@ Review changes by type:
 - Cost implications
 - Variable validation
 
-**Docker** (`app/Dockerfile`):
+**Docker** (`docker/Dockerfile`, `app/Dockerfile`):
 - Base image pinned?
 - Cron schedule correct?
 - Layer ordering efficient?
 
-### 3. Post Review
+### 3. Post Review to GitHub
 
-Post each finding as one line:
+**Always post findings as GitHub PR review comments — both inline and summary.**
 
+#### 3a. Inline comments
+
+Use `gh api` to submit a PR review with inline comments on specific files/lines:
+
+```bash
+gh api repos/xSzpo/xFlats-Intelligent-Real-Estate-Assistant/pulls/<N>/reviews \
+  --method POST \
+  --field event=COMMENT \
+  --field body="<summary>" \
+  --field 'comments=[{"path":"<file>","line":<line>,"body":"<comment>"}]'
 ```
-**[SEVERITY]** `file:line` — Problem. Fix: suggestion.
+
+Each inline comment body format:
+```
+**[SEVERITY]** Problem description. Fix: suggestion.
 ```
 
 Severity levels:
@@ -56,6 +69,19 @@ Severity levels:
 - **Low** — nice to fix (style, minor improvements)
 - **Nit** — optional (formatting, naming)
 
-### 4. Summary
+Tips:
+- `line` must be within the diff hunk (use `gh pr diff` to find valid line numbers)
+- For lines not in the diff, include them in the summary comment instead
+- Group related findings into one inline comment when on adjacent lines
+- Use `side=RIGHT` for lines in the new version of the file
 
-End with overall assessment: Approve / Request Changes / Comment.
+#### 3b. Summary comment
+
+The review body (passed as `--field body=`) should contain:
+1. Overall verdict: **Approve** / **Request Changes** / **Comment**
+2. Counts by severity
+3. Any findings that couldn't be attached inline (lines outside diff)
+
+### 4. Also show findings to user
+
+After posting to GitHub, display a concise summary in the conversation so user sees findings without leaving the terminal.
