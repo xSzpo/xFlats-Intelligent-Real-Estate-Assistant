@@ -1,3 +1,8 @@
+---
+name: pr-review
+description: Structured inline code review for xFlats PRs. Use when user says "review PR", "code review", or provides a PR URL/number.
+---
+
 # Skill: pr-review
 
 Structured inline code review for xFlats PRs.

@@ -1,3 +1,8 @@
+---
+name: terraform-ops
+description: How to run Terraform in this repo (AWS profile, module order, pitfalls). Use when working with infra/ modules or user mentions terraform.
+---
+
 # Skill: terraform-ops
 
 Run Terraform in this repo. All modules under `infra/`.

@@ -1,3 +1,8 @@
+---
+name: pr-create
+description: Create GitHub PRs with consistent format for xFlats. Use when user says "create PR", "open PR", "submit PR", or task is ready for review.
+---
+
 # Skill: pr-create
 
 Create GitHub PRs with consistent format for xFlats.
