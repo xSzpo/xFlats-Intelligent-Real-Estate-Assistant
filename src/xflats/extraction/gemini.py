@@ -73,13 +73,13 @@ class Offers(BaseModel):
     """Pydantic model for property offer data."""
     address: str
     description: str
-    floor: str
-    price: int
-    area_m2: int
-    number_of_rooms: int
-    year_built: int
-    energy_label: str
-    balcony: str
+    floor: str | None = None
+    price: int | None = None
+    area_m2: int | None = None
+    number_of_rooms: int | None = None
+    year_built: int | None = None
+    energy_label: str | None = None
+    balcony: bool
     url: str
 
 
@@ -135,12 +135,21 @@ def process_offers_with_ai(
             temperature=0.1,
             response_mime_type="application/json",
             response_schema=ListOfOffers,
-            max_output_tokens=8192,
+            max_output_tokens=65536,
         ),
         contents=[
             PROMPT_TEMPLATE.format(html_content=source_content),
             EXAMPLE_TEXT,
         ],
     )
+
+    try:
+        parsed = json.loads(response.text)
+        if isinstance(parsed, dict) and "offers" in parsed:
+            return parsed["offers"]
+        if isinstance(parsed, list):
+            return parsed
+    except json.JSONDecodeError:
+        pass
 
     return fix_json(response.text) or []

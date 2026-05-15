@@ -25,13 +25,13 @@ def setup_vector_database(chromadb_ip: str, embed_fn) -> chromadb.Collection:
     return collection
 
 
-def check_if_document_exists(doc_id: str, collection: chromadb.api.models.Collection.Collection) -> bool:
+def check_if_document_exists(doc_id: str, collection: chromadb.Collection) -> bool:
     result = collection.get(ids=[doc_id])
     return bool(result["ids"])
 
 
 def add_offers_to_db(
-    collection: chromadb.api.models.Collection.Collection,
+    collection: chromadb.Collection,
     offers: list[dict],
     batch_size: int = 100,
 ):
@@ -69,7 +69,10 @@ def get_price_point(offer: dict, collection, n_results: int = 5) -> float:
         query_texts=[offer_to_text(offer)],
         n_results=n_results,
     )["metadatas"][0]
-    avg_price = statistics.mean([item.get("price") for item in emb_results])
+    prices = [item.get("price") for item in emb_results if item.get("price") is not None]
+    if not prices:
+        return 0.0
+    avg_price = statistics.mean(prices)
     return offer.get("price") / avg_price if avg_price != 0 else 0.0
 
 

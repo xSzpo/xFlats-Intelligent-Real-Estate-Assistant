@@ -11,8 +11,7 @@ from pydantic import HttpUrl, ValidationError
 
 def extract_adresse_urls(html_content: str, base_url: str = "https://www.boligsiden.dk") -> list[HttpUrl]:
     """Parse HTML and return unique validated HttpUrl for /adresse/ links."""
-    def remove_url_parameters(path: str) -> str:
-        return path.split("?", 1)[0]
+    from xflats.utils import remove_url_parameters
 
     soup = BeautifulSoup(html_content, "html.parser")
     pattern = re.compile(r"^/adresse/")
@@ -73,24 +72,9 @@ def check_crawl_permission(target_page: str) -> bool:
 
 
 def fetch_html(url: str) -> str:
-    response = requests.get(url)
-    if response.status_code == 200:
-        return response.text
-    raise Exception(f"Failed to retrieve page. Status code: {response.status_code}")
-
-
-def preprocess_html(html_content: str) -> str:
-    soup = BeautifulSoup(html_content, "html.parser")
-    elements_to_remove = [
-        "script", "style", "meta", "link", "nav", "header", "footer",
-        "aside", "form", "input", "button", "select", "option", "textarea",
-        "canvas", "iframe", "noscript",
-    ]
-    for tag in soup(elements_to_remove):
-        tag.decompose()
-    for comment in soup.find_all(string=lambda text: isinstance(text, Comment)):
-        comment.extract()
-    return str(soup)
+    response = requests.get(url, timeout=10)
+    response.raise_for_status()
+    return response.text
 
 
 def _preprocess_html(html: str) -> str:

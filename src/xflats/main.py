@@ -61,7 +61,7 @@ class RealEstateScraper:
             config.chromadb_ip, GeminiEmbeddingFunction(self.client)
         )
 
-    def _generate_url_hash(self, url: str | Any) -> str:
+    def _generate_url_hash(self, url: str) -> str:
         url_str = str(url)
         return hashlib.shake_128(url_str.encode()).hexdigest(8)
 
@@ -91,7 +91,7 @@ class RealEstateScraper:
             offer["id"] = self._generate_url_hash(offer["url"])
 
         offer["version"] = OFFER_VERSION
-        offer["create_date"] = datetime.datetime.today().timestamp()
+        offer["create_date"] = datetime.datetime.now(datetime.timezone.utc).timestamp()
 
         try:
             address = offer.get("address")

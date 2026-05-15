@@ -1,5 +1,7 @@
 """Shared utility functions."""
 
+import time
+
 import requests
 
 
@@ -23,8 +25,6 @@ def get_public_transport_stations(
     radius: int = 700,
     max_retries: int = 5,
 ) -> dict:
-    import time
-
     if address is not None:
         lat, lon = geocode_address(address)
 

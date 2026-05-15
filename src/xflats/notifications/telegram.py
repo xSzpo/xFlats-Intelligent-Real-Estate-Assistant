@@ -50,13 +50,11 @@ def send_telegram_notifications(
         offer_text = create_offer_text(offer)
         print(f"Sending: {offer_text}")
 
-        telegram_url = (
-            f"https://api.telegram.org/bot{telegram_token}/"
-            f"sendMessage?chat_id={telegram_chat_id}&text={offer_text}"
-        )
+        telegram_url = f"https://api.telegram.org/bot{telegram_token}/sendMessage"
+        payload = {"chat_id": telegram_chat_id, "text": offer_text}
 
         try:
-            response = requests.get(telegram_url)
+            response = requests.post(telegram_url, json=payload, timeout=10)
             response.raise_for_status()
         except requests.RequestException as e:
             print(f"Failed to send Telegram message: {e}")

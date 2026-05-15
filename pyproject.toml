@@ -6,7 +6,6 @@ requires-python = ">=3.11"
 dependencies = [
     "google-genai==1.7.0",
     "google-api-core",
-    "osmnx",
     "chromadb",
     "boto3",
     "requests",

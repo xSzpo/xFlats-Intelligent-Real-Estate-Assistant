@@ -11,10 +11,12 @@ DEFAULT_NUMBER_OF_ROOMS = 2
 
 def get_secret(secret_id, key=None, profile_name=None):
     session = boto3.session.Session(profile_name=profile_name)
-    client = session.client(service_name="secretsmanager", region_name="eu-west-1")
+    client = session.client(service_name="secretsmanager", region_name="eu-central-1")
     get_secret_value_response = client.get_secret_value(SecretId=secret_id)
     secret = json.loads(get_secret_value_response["SecretString"])
     if key:
+        if key not in secret:
+            raise KeyError(f"Key {key!r} not found in secret {secret_id!r}. Available keys: {list(secret.keys())}")
         return secret[key]
     return secret
 
