@@ -20,6 +20,7 @@
 - source: "src/xflats/**/*.py"
   docs:
     - README.md
+    - docs/architecture.md
   reason: "App logic changes may affect setup/usage docs"
 
 - source: "pyproject.toml"
@@ -31,6 +32,7 @@
   docs:
     - README.md
     - AGENTS.md
+    - docs/architecture.md
   reason: "Container changes affect build commands and agent tech stack reference"
 
 # --- Infrastructure ---
@@ -38,6 +40,7 @@
   docs:
     - README.md
     - AGENTS.md
+    - docs/architecture.md
   reason: "Terraform changes affect infra docs and agent permissions/commands"
 
 # --- Agent config ---
@@ -79,3 +82,9 @@
 - source: ".gitignore"
   docs: []
   reason: "Gitignore changes rarely need doc updates"
+
+# --- Architecture doc ---
+- source: "docs/architecture.md"
+  docs:
+    - README.md
+  reason: "Architecture doc changes may affect README references and overview"

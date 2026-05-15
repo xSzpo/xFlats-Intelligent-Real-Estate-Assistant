@@ -31,13 +31,6 @@ htmlcov/
 # Misc
 cache
 
-# Python / uv
-.venv/
-dist/
-*.egg-info/
-.env
-.env.*
-
 # OpenCode
 .opencode/node_modules
 .opencode/package.json
