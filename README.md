@@ -77,7 +77,7 @@ Finding a great apartment in Copenhagen can be a race against time. xFlats AI Ag
 
 | Layer          | Technology                                      |
 |----------------|------------------------------------------------|
-| Language       | Python 3.11                                     |
+| Language       | Python 3.14                                     |
 | Package Mgmt   | [uv](https://docs.astral.sh/uv/)              |
 | Task Runner    | [just](https://github.com/casey/just)           |
 | AI Extraction  | Google Gemini (`gemini-2.0-flash`)              |
@@ -133,7 +133,7 @@ xFlats-Intelligent-Real-Estate-Assistant/
 
 ### Prerequisites
 
-- Python 3.11+
+- Python 3.14+
 - [uv](https://docs.astral.sh/uv/) — package manager
 - [just](https://github.com/casey/just) — task runner
 - Docker
