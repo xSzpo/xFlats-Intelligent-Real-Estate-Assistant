@@ -92,7 +92,6 @@ class RealEstateScraper:
 
         Raises:
             ValueError: If crawling is not permitted for the page URL.
-            requests.RequestException: If the HTTP request fails.
         """
         page_url = BASE_URL.format(page=page)
         logger.info("Processing page %d: %s", page, page_url)
@@ -139,7 +138,7 @@ class RealEstateScraper:
                 stations = get_public_transport_stations(lat=lat, lon=lon)
                 offer.update(stations)
                 logger.info("Retrieved location data for %s", address)
-        except Exception as e:  # noqa: BLE001
+        except (ValueError, requests.RequestException) as e:
             logger.error("Failed to retrieve geocode data: %s", e)
 
     def _process_page_with_retry(self, page: int) -> list[dict[str, Any]]:

@@ -54,9 +54,6 @@ def send_telegram_notifications(
         collection: ChromaDB collection used for price point lookups.
         telegram_token: Telegram Bot API token.
         telegram_chat_id: Target Telegram chat ID for notifications.
-
-    Returns:
-        None.
     """
     if not offers:
         logger.info("No apartment listings to share on Telegram")
