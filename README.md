@@ -97,7 +97,7 @@ Finding a great apartment in Copenhagen can be a race against time. xFlats AI Ag
 ## Project Structure
 
 ```
-xFlats/
+xFlats-Intelligent-Real-Estate-Assistant/
 ├── README.md
 ├── AGENTS.md
 ├── pyproject.toml              # Python deps + tool config (uv)
@@ -124,6 +124,7 @@ xFlats/
 ├── infra/                      # Terraform (ec2, ecr, iam, s3, secrets)
 ├── notebooks/                  # Jupyter exploration
 └── docs/
+    └── architecture.md         # System architecture
 ```
 
 ---
