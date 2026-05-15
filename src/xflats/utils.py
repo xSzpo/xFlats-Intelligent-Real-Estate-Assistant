@@ -11,7 +11,9 @@ def geocode_address(address: str) -> tuple[float, float]:
     """Use OSM Nominatim to turn a street address into (lat, lon)."""
     url = "https://nominatim.openstreetmap.org/search"
     params: dict[str, str | int] = {"q": address, "format": "json", "limit": 1}
-    headers = {"User-Agent": "xflats/1.0 (github.com/xSzpo/xFlats-Intelligent-Real-Estate-Assistant)"}
+    headers = {
+        "User-Agent": "xflats/1.0 (github.com/xSzpo/xFlats-Intelligent-Real-Estate-Assistant)"
+    }
     resp = requests.get(url, params=params, headers=headers)
     resp.raise_for_status()
     results = resp.json()

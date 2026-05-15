@@ -131,7 +131,9 @@ class RealEstateScraper:
                 return offers
 
             except Exception as e:
-                print(f"Error processing page {page}, attempt {attempt}/{MAX_RETRIES}: {e}")
+                print(
+                    f"Error processing page {page}, attempt {attempt}/{MAX_RETRIES}: {e}"
+                )
                 if attempt < MAX_RETRIES:
                     time.sleep(attempt)
                 else:
@@ -166,12 +168,18 @@ class RealEstateScraper:
         historical_offers = self.scrape_historical_listings()
 
         if historical_offers:
-            print(f"Adding {len(historical_offers)} historical listings to vector database")
+            print(
+                f"Adding {len(historical_offers)} historical listings to vector database"
+            )
             add_offers_to_db(self.collection, historical_offers)
 
         now = datetime.datetime.now()
-        cutoff_time = (now - datetime.timedelta(minutes=GET_OFFERS_FROM_X_LAST_MIN)).timestamp()
-        recent_offers = get_recent_offers(self.collection, cutoff_time, self.config.number_of_rooms)
+        cutoff_time = (
+            now - datetime.timedelta(minutes=GET_OFFERS_FROM_X_LAST_MIN)
+        ).timestamp()
+        recent_offers = get_recent_offers(
+            self.collection, cutoff_time, self.config.number_of_rooms
+        )
         send_telegram_notifications(
             recent_offers,
             self.collection,

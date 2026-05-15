@@ -1,2 +1,1 @@
 */30 * * * * root cd /app && /bin/uv run python -m xflats.main >> /var/log/cron.log 2>&1
-

@@ -16,11 +16,15 @@ def setup_vector_database(chromadb_ip: str, embed_fn) -> chromadb.Collection:
     embed_fn.document_mode = True
 
     if chromadb_ip:
-        chroma_client = chromadb.HttpClient(host=chromadb_ip, port=CHROMADB_DEFAULT_PORT)
+        chroma_client = chromadb.HttpClient(
+            host=chromadb_ip, port=CHROMADB_DEFAULT_PORT
+        )
     else:
         chroma_client = chromadb.PersistentClient()
 
-    collection = chroma_client.get_or_create_collection(name=DB_NAME, embedding_function=embed_fn)
+    collection = chroma_client.get_or_create_collection(
+        name=DB_NAME, embedding_function=embed_fn
+    )
     print("Vector database initialized")
     return collection
 
@@ -69,7 +73,9 @@ def get_price_point(offer: dict, collection, n_results: int = 5) -> float:
         query_texts=[offer_to_text(offer)],
         n_results=n_results,
     )["metadatas"][0]
-    prices = [item.get("price") for item in emb_results if item.get("price") is not None]
+    prices = [
+        item.get("price") for item in emb_results if item.get("price") is not None
+    ]
     if not prices:
         return 0.0
     avg_price = statistics.mean(prices)
@@ -81,7 +87,9 @@ def get_similar_offers(offer: dict, collection) -> str:
     return f"Offer:\n\n{offer}\n\nSimilar offers:\n\n{emb_results}"
 
 
-def get_recent_offers(collection, cutoff_time: float, number_of_rooms: int) -> list[dict[str, Any]]:
+def get_recent_offers(
+    collection, cutoff_time: float, number_of_rooms: int
+) -> list[dict[str, Any]]:
     """Retrieve recent offers matching criteria."""
     results = collection.get(
         include=["metadatas"],
