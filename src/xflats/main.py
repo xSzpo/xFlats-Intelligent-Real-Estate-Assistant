@@ -173,7 +173,7 @@ class RealEstateScraper:
             )
             add_offers_to_db(self.collection, historical_offers)
 
-        now = datetime.datetime.now()
+        now = datetime.datetime.now(datetime.timezone.utc)
         cutoff_time = (
             now - datetime.timedelta(minutes=GET_OFFERS_FROM_X_LAST_MIN)
         ).timestamp()

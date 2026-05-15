@@ -26,7 +26,7 @@ docker:
 
 # Terraform plan for all infra modules
 tf-plan:
-    for dir in infra/*/; do echo "=== $dir ===" && terraform -chdir=$dir plan; done
+    for dir in infra/*/; do echo "=== $dir ===" && terraform -chdir=$dir init -backend=false && terraform -chdir=$dir plan; done
 
 # Remove caches and build artifacts
 clean:
