@@ -1,0 +1,52 @@
+# doc-update-registry.yml
+#
+# Maps source paths to docs that MUST be reviewed (and potentially updated)
+# when those paths change in a PR.
+#
+# Used by: PR reviewers, AI PR review agent.
+#
+# Rules:
+#   - Every PR touching files under a "source" glob must verify the linked docs
+#     are still accurate. Update them if needed, or confirm no change required.
+#   - Plan docs (docs/plans/) are excluded — they are ticket-scoped.
+#
+# Format:
+#   - source: <glob pattern>
+#     docs:
+#       - <path to doc that may need updating>
+#     reason: <why this mapping exists>
+
+# --- Python application ---
+- source: "app/*.py"
+  docs:
+    - README.md
+  reason: "App logic changes may affect setup/usage docs"
+
+- source: "app/requirements.txt"
+  docs:
+    - README.md
+  reason: "Dependency changes affect setup instructions"
+
+- source: "app/Dockerfile"
+  docs:
+    - README.md
+    - AGENTS.md
+  reason: "Container changes affect build commands and agent tech stack reference"
+
+# --- Infrastructure ---
+- source: "infra/**/*.tf"
+  docs:
+    - README.md
+    - AGENTS.md
+  reason: "Terraform changes affect infra docs and agent permissions/commands"
+
+# --- Agent config ---
+- source: ".agents/**"
+  docs:
+    - AGENTS.md
+  reason: "Skill changes affect agent behavior documentation"
+
+- source: "opencode.json"
+  docs:
+    - AGENTS.md
+  reason: "Permission/MCP changes affect agent capabilities"
