@@ -14,13 +14,13 @@ jobs:
       id-token: write
       contents: read
     env:
-      ECR_REPOSITORY: xflats
+      ECR_REPOSITORY: xflats-crawler
     steps:
       - uses: actions/checkout@v4
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/github-actions-deploy
-          aws-region: ${{ secrets.AWS_REGION }}
+          role-to-assume: arn:aws:iam::274181059559:role/github-actions-deploy
+          aws-region: eu-central-1
       - uses: aws-actions/amazon-ecr-login@v2
         id: login-ecr
       - name: Build and push Docker image
