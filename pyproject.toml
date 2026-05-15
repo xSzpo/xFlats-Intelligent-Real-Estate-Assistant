@@ -27,7 +27,6 @@ testpaths = ["tests"]
 pythonpath = ["src"]
 
 [tool.ruff]
-target-version = "py314"
 src = ["src", "tests"]
 line-length = 88
 
