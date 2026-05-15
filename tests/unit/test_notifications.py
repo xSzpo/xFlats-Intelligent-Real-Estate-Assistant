@@ -47,6 +47,7 @@ class TestSendTelegramNotifications:
         call_kwargs = mock_post.call_args
         assert "api.telegram.org" in call_kwargs.args[0]
         assert call_kwargs.kwargs["json"]["chat_id"] == "12345"
+        mock_post.return_value.raise_for_status.assert_called_once()
 
     @patch("xflats.notifications.telegram.requests.post")
     @patch("xflats.notifications.telegram.get_price_point")

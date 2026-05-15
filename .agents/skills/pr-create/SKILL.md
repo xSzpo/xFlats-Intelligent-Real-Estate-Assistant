@@ -21,7 +21,7 @@ User says "create PR", "open PR", "submit PR", or task is ready for review.
 ```bash
 gh pr create \
   --repo xSzpo/xFlats-Intelligent-Real-Estate-Assistant \
-  --title "<type>: <short description>" \
+  --title "#<N> <type>: <short description>" \
   --body "$(cat <<'EOF'
 <filled template>
 EOF
@@ -30,7 +30,8 @@ EOF
 
 ## Rules
 
-- Title: conventional commits (`feat:`, `fix:`, `chore:`, `docs:`)
+- Title: `#<N> <type>: <short description>` (or `<type>: <short description>` if no issue)
+- Type: conventional commits (`feat:`, `fix:`, `chore:`, `docs:`, etc.)
 - Body: use TEMPLATE.md structure
 - Always link related issue: `Closes #N` or `Related to #N`
 - Push first: `GIT_SSH_COMMAND="ssh -i ~/.ssh/id_rsa_priv" git push`

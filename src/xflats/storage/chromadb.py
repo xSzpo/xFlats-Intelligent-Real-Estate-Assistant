@@ -1,6 +1,6 @@
 """ChromaDB vector database operations."""
 
-import datetime
+from datetime import datetime, timedelta, timezone
 import statistics
 from typing import Any
 
@@ -62,10 +62,10 @@ def offer_to_text(offer: dict) -> str:
 
 
 def get_price_point(offer: dict, collection, n_results: int = 5) -> float:
-    now = datetime.datetime.now()
+    now = datetime.now(timezone.utc)
     emb_results = collection.query(
         include=["metadatas"],
-        where={"create_date": {"$gt": (now - datetime.timedelta(days=90)).timestamp()}},
+        where={"create_date": {"$gt": (now - timedelta(days=90)).timestamp()}},
         query_texts=[offer_to_text(offer)],
         n_results=n_results,
     )["metadatas"][0]

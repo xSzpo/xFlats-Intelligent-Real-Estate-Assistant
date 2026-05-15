@@ -46,9 +46,9 @@ User says "implement issue #N", "work on #N", or provides a GitHub issue URL/num
 ### Phase 6 — PR
 
 1. `git add` changed files
-2. Commit: `<type>: <description> (#<N>)` — see **Branch & PR Naming** for type list
+2. Commit: `#<N> <type>: <description>` — see **Branch & PR Naming** for type list
 3. Push: `GIT_SSH_COMMAND="ssh -i ~/.ssh/id_rsa_priv" git push -u origin <branch>`
-4. Create PR: `gh pr create --repo xSzpo/xFlats-Intelligent-Real-Estate-Assistant --title "<type>: <description> (#<N>)" --body "<body>"`
+4. Create PR: `gh pr create --repo xSzpo/xFlats-Intelligent-Real-Estate-Assistant --title "#<N> <type>: <description>" --body "<body>"`
 5. Link issue in PR body: `Closes #<N>`
 
 ## Branch & PR Naming
@@ -79,11 +79,16 @@ Examples: `feat/9/google-style-guide`, `fix/12/empty-stats-guard`, `chore/update
 
 ### PR title
 
-Same type prefix as branch: `<type>: <description> (#<N>)` (or without `(#N)` if no issue).
+| Pattern | When |
+|---------|------|
+| `#<N> <type>: <short description>` | Linked to a GitHub issue |
+| `<type>: <short description>` | No GitHub issue |
+
+Examples: `#9 feat: add Google style guide`, `#12 fix: empty stats guard`, `chore: update deps`
 
 ### Commit message
 
-Same format as PR title: `<type>: <description> (#<N>)`
+Same format as PR title: `#<N> <type>: <description>` (or `<type>: <description>` if no issue).
 
 ## Verification
 

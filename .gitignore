@@ -26,10 +26,17 @@ htmlcov/
 .coverage
 
 # Security
-.secrets.baseline
+# .secrets.baseline must be committed for detect-secrets pre-commit hook
 
 # Misc
 cache
+
+# Python / uv
+.venv/
+dist/
+*.egg-info/
+.env
+.env.*
 
 # OpenCode
 .opencode/node_modules

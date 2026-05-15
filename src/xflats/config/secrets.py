@@ -8,10 +8,18 @@ import boto3
 DEFAULT_PAGES_TO_OPEN = 3
 DEFAULT_NUMBER_OF_ROOMS = 2
 
+_clients: dict[str | None, "boto3.client"] = {}
+
+
+def _get_client(profile_name=None):
+    if profile_name not in _clients:
+        session = boto3.session.Session(profile_name=profile_name)
+        _clients[profile_name] = session.client(service_name="secretsmanager", region_name="eu-central-1")
+    return _clients[profile_name]
+
 
 def get_secret(secret_id, key=None, profile_name=None):
-    session = boto3.session.Session(profile_name=profile_name)
-    client = session.client(service_name="secretsmanager", region_name="eu-central-1")
+    client = _get_client(profile_name)
     get_secret_value_response = client.get_secret_value(SecretId=secret_id)
     secret = json.loads(get_secret_value_response["SecretString"])
     if key:
