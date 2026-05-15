@@ -22,6 +22,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
+      - name: Create dummy SSH key for Terraform file() references
+        run: mkdir -p ~/.ssh && ssh-keygen -t rsa -f ~/.ssh/id_rsa -N "" -q
       - name: Validate all Terraform modules
         run: |
           for dir in infra/*/; do
