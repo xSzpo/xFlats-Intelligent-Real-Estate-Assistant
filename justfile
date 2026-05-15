@@ -43,3 +43,7 @@ install-dev:
 # Install pre-commit hooks
 pre-commit:
     uv run pre-commit install
+
+# Backup ChromaDB from EC2 to S3
+backup-chromadb key="~/.ssh/chroma_key.pem":
+    ./scripts/backup_chromadb.sh {{key}}

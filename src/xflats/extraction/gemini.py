@@ -1,6 +1,7 @@
 """Gemini AI extraction for structured property data."""
 
 import json
+import logging
 import re
 from typing import Any
 
@@ -9,6 +10,8 @@ from google import genai
 from google.api_core import retry
 from google.genai import types
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 # Prompt templates
 PROMPT_TEMPLATE = """
@@ -75,13 +78,14 @@ class Offers(BaseModel):
     Attributes:
         address: Street address in original language.
         description: English-language description of the property.
-        floor: Floor number, if available.
+        floor: Floor number or "current/total" format, if available.
         price: Listing price in local currency as integer, or ``None``.
+        rent: Monthly rent/maintenance fee in local currency, or ``None``.
         area_m2: Living area in square metres, or ``None``.
         number_of_rooms: Total room count, or ``None``.
         year_built: Construction year, or ``None``.
         energy_label: Single uppercase letter energy rating, or ``None``.
-        balcony: Whether a balcony or terrace is present.
+        balcony: Whether a balcony or terrace is present, or ``None``.
         url: Full URL to the original listing.
     """
 
@@ -89,11 +93,12 @@ class Offers(BaseModel):
     description: str
     floor: str | None = None
     price: int | None = None
-    area_m2: int | None = None
+    rent: int | None = None
+    area_m2: int | float | None = None
     number_of_rooms: int | None = None
     year_built: int | None = None
     energy_label: str | None = None
-    balcony: bool
+    balcony: bool | None = None
     url: str
 
 
@@ -148,15 +153,23 @@ class GeminiEmbeddingFunction(EmbeddingFunction):
             when ``False``, produces query embeddings.
     """
 
-    def __init__(self, client: genai.Client, *args: Any, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        client: genai.Client,
+        model: str = "models/text-embedding-004",
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
         """Initialise the embedding function.
 
         Args:
             client: An authenticated ``genai.Client`` instance.
+            model: Gemini embedding model identifier.
             *args: Positional arguments forwarded to the parent class.
             **kwargs: Keyword arguments forwarded to the parent class.
         """
         self.client = client
+        self.model = model
         self.document_mode = True
         super().__init__(*args, **kwargs)
 
@@ -172,7 +185,7 @@ class GeminiEmbeddingFunction(EmbeddingFunction):
         """
         task_type = "retrieval_document" if self.document_mode else "retrieval_query"
         response = self.client.models.embed_content(
-            model="models/text-embedding-004",
+            model=self.model,
             contents=input,
             config=types.EmbedContentConfig(task_type=task_type),
         )
@@ -180,7 +193,11 @@ class GeminiEmbeddingFunction(EmbeddingFunction):
 
 
 def process_offers_with_ai(
-    client: genai.Client, offers_source: list[dict[str, str]]
+    client: genai.Client,
+    offers_source: list[dict[str, str]],
+    model: str = "gemini-2.0-flash",
+    prompt_template: str = PROMPT_TEMPLATE,
+    example_text: str = EXAMPLE_TEXT,
 ) -> list[dict[str, Any]]:
     """Process offer sources using Gemini AI to extract structured data.
 
@@ -191,6 +208,9 @@ def process_offers_with_ai(
         client: An authenticated ``genai.Client`` instance.
         offers_source: List of dicts each containing ``url`` and ``text`` keys
             representing a single property listing.
+        model: Gemini model name for content generation.
+        prompt_template: Prompt template with ``{html_content}`` placeholder.
+        example_text: Example JSON output appended to the prompt.
 
     Returns:
         A list of dictionaries, each containing extracted property fields.
@@ -202,19 +222,26 @@ def process_offers_with_ai(
     for i, offer in enumerate(offers_source, 1):
         source_content += SOURCE_TEMPLATE.format(i=i, **offer)
 
-    response = client.models.generate_content(
-        model="gemini-2.0-flash",
-        config=types.GenerateContentConfig(
-            temperature=0.1,
-            response_mime_type="application/json",
-            response_schema=ListOfOffers,
-            max_output_tokens=65536,
-        ),
-        contents=[
-            PROMPT_TEMPLATE.format(html_content=source_content),
-            EXAMPLE_TEXT,
-        ],
-    )
+    try:
+        response = client.models.generate_content(
+            model=model,
+            config=types.GenerateContentConfig(
+                temperature=0.1,
+                response_mime_type="application/json",
+                response_schema=ListOfOffers,
+                max_output_tokens=65536,
+            ),
+            contents=[
+                prompt_template.format(html_content=source_content),
+                example_text,
+            ],
+        )
+    except genai.errors.APIError as e:
+        if e.code == 429:
+            logger.warning("Gemini rate limit hit (429). Skipping batch.")
+        else:
+            logger.error("Gemini API error: %s", e)
+        return []
 
     try:
         parsed = json.loads(response.text)

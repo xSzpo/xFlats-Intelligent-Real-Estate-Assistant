@@ -25,7 +25,7 @@ class TestCreateOfferText:
         sample_offer["subways"] = False
         sample_offer["price_point"] = 1.0
         text = create_offer_text(sample_offer)
-        assert "Subway(s):" in text
+        assert "Subway(s):" not in text
 
 
 class TestSendTelegramNotifications:

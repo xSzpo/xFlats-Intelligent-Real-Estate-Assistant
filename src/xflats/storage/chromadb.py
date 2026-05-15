@@ -14,7 +14,9 @@ DB_NAME = "real-estate-offers"
 
 
 def setup_vector_database(
-    chromadb_ip: str, embed_fn: chromadb.EmbeddingFunction
+    chromadb_ip: str,
+    embed_fn: chromadb.EmbeddingFunction,
+    collection_name: str = DB_NAME,
 ) -> chromadb.Collection:
     """Initialize a ChromaDB collection with the given embedding function.
 
@@ -26,6 +28,7 @@ def setup_vector_database(
             local ``PersistentClient`` is used instead.
         embed_fn: Embedding function passed to the collection for automatic
             document vectorisation.
+        collection_name: Name of the ChromaDB collection to create or open.
 
     Returns:
         The ChromaDB collection ready for queries and inserts.
@@ -41,15 +44,13 @@ def setup_vector_database(
         chroma_client = chromadb.PersistentClient()
 
     collection = chroma_client.get_or_create_collection(
-        name=DB_NAME, embedding_function=embed_fn
+        name=collection_name, embedding_function=embed_fn
     )
     logger.info("Vector database initialized")
     return collection
 
 
-def check_if_document_exists(
-    doc_id: str, collection: chromadb.Collection
-) -> bool:
+def check_if_document_exists(doc_id: str, collection: chromadb.Collection) -> bool:
     """Check whether a document with the given ID exists in the collection.
 
     Args:
@@ -80,7 +81,7 @@ def add_offers_to_db(
     """
     documents = [offer_to_text(offer) for offer in offers]
     ids = [str(offer.get("id", "")) for offer in offers]
-    metadatas = offers
+    metadatas = [{k: v for k, v in offer.items() if v is not None} for offer in offers]
 
     for i in range(0, len(documents), batch_size):
         batch_docs = documents[i : i + batch_size]
@@ -157,9 +158,7 @@ def get_price_point(
     return float(offer_price) / avg_price
 
 
-def get_similar_offers(
-    offer: dict[str, Any], collection: chromadb.Collection
-) -> str:
+def get_similar_offers(offer: dict[str, Any], collection: chromadb.Collection) -> str:
     """Return a formatted string of the offer and its nearest neighbours.
 
     Args:
@@ -178,26 +177,29 @@ def get_recent_offers(
     collection: chromadb.Collection,
     cutoff_time: float,
     number_of_rooms: int,
+    filter_subway: bool = True,
 ) -> list[dict[str, Any]]:
-    """Retrieve recent offers matching room-count and transit criteria.
+    """Retrieve recent offers matching room-count and optional transit criteria.
 
     Args:
         collection: ChromaDB collection to query.
         cutoff_time: Unix timestamp; only offers created after this time are
             returned.
         number_of_rooms: Minimum number of rooms required.
+        filter_subway: If ``True``, only return offers near a subway station.
 
     Returns:
         List of offer metadata dictionaries matching the filters.
     """
+    conditions: list[dict[str, Any]] = [
+        {"create_date": {"$gt": cutoff_time}},
+        {"number_of_rooms": {"$gte": number_of_rooms}},
+    ]
+    if filter_subway:
+        conditions.append({"subways": {"$eq": True}})
+
     results = collection.get(
         include=["metadatas"],
-        where={
-            "$and": [
-                {"create_date": {"$gt": cutoff_time}},  # type: ignore[dict-item]
-                {"subways": {"$eq": True}},  # type: ignore[dict-item]
-                {"number_of_rooms": {"$gte": number_of_rooms}},  # type: ignore[dict-item]
-            ]
-        },
+        where={"$and": conditions},  # type: ignore[dict-item]
     )
     return list(results.get("metadatas") or [])  # type: ignore[arg-type]

@@ -11,11 +11,19 @@ import requests
 logger = logging.getLogger(__name__)
 
 
-def geocode_address(address: str) -> tuple[float, float]:
+def geocode_address(
+    address: str,
+    country: str | None = None,
+    address_cleanup: bool = False,
+) -> tuple[float, float]:
     """Use OSM Nominatim to turn a street address into (lat, lon).
 
     Args:
         address: Free-text street address to geocode.
+        country: Optional country name to append for better geocoding
+            accuracy (e.g. "Polska", "Denmark").
+        address_cleanup: If ``True``, strip common prefixes like "ul."
+            that can cause geocoding failures.
 
     Returns:
         A ``(latitude, longitude)`` tuple of floats.
@@ -24,8 +32,14 @@ def geocode_address(address: str) -> tuple[float, float]:
         ValueError: If Nominatim returns no results for the address.
         requests.HTTPError: If the HTTP request fails.
     """
+    geocode_query = address
+    if address_cleanup:
+        geocode_query = geocode_query.replace("ul. ", "").replace("ul.", "")
+    if country and country not in geocode_query:
+        geocode_query = f"{geocode_query}, {country}"
+
     url = "https://nominatim.openstreetmap.org/search"
-    params: dict[str, str | int] = {"q": address, "format": "json", "limit": 1}
+    params: dict[str, str | int] = {"q": geocode_query, "format": "json", "limit": 1}
     headers = {
         "User-Agent": "xflats/1.0 (github.com/xSzpo/xFlats-Intelligent-Real-Estate-Assistant)"
     }
@@ -33,7 +47,7 @@ def geocode_address(address: str) -> tuple[float, float]:
     resp.raise_for_status()
     results = resp.json()
     if not results:
-        raise ValueError(f"No location found for address: {address!r}")
+        raise ValueError(f"No location found for address: {geocode_query!r}")
     return float(results[0]["lat"]), float(results[0]["lon"])
 
 
@@ -42,7 +56,7 @@ def get_public_transport_stations(
     lon: float | None = None,
     address: str | None = None,
     radius: int = 700,
-    max_retries: int = 5,
+    max_retries: int = 2,
 ) -> dict[str, bool | str]:
     """Query Overpass API for public-transport stations near a point.
 
@@ -65,7 +79,7 @@ def get_public_transport_stations(
 
     overpass_url = "http://overpass-api.de/api/interpreter"
     query = f"""
-    [out:json][timeout:25];
+    [out:json][timeout:15];
     (
       node(around:{radius},{lat},{lon})[public_transport=station];
       node(around:{radius},{lat},{lon})[railway=subway_entrance];
@@ -74,7 +88,7 @@ def get_public_transport_stations(
     out body;
     """
 
-    backoff_time = 30
+    backoff_time = 10
     station_types = {
         "ferry_terminals": "ferry_terminal",
         "light_rails": "light_rail",
@@ -85,7 +99,7 @@ def get_public_transport_stations(
 
     for attempt in range(max_retries):
         try:
-            response = requests.get(overpass_url, params={"data": query})
+            response = requests.get(overpass_url, params={"data": query}, timeout=20)
             response.raise_for_status()
             data = response.json()
 
@@ -155,7 +169,9 @@ def remove_url_parameters(url: str) -> str:
     return url.split("?", 1)[0]
 
 
-def filter_unique_ids(dict_list: list[dict[str, Any]], id_key: str = "id") -> list[dict[str, Any]]:
+def filter_unique_ids(
+    dict_list: list[dict[str, Any]], id_key: str = "id"
+) -> list[dict[str, Any]]:
     """De-duplicate a list of dicts by a given key.
 
     Args:
@@ -174,3 +190,20 @@ def filter_unique_ids(dict_list: list[dict[str, Any]], id_key: str = "id") -> li
                 seen_ids.add(unique_id)
                 result.append(item)
     return result
+
+
+def filter_none_metadata(
+    offers: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Filter out None values from offer metadata dicts.
+
+    ChromaDB only accepts str, int, float, and bool metadata values.
+    This strips any keys with ``None`` values.
+
+    Args:
+        offers: List of offer dictionaries.
+
+    Returns:
+        New list of dicts with ``None``-valued keys removed.
+    """
+    return [{k: v for k, v in offer.items() if v is not None} for offer in offers]
