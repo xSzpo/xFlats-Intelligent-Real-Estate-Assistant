@@ -81,6 +81,11 @@ class TestCheckCrawlPermission:
 
 class TestRemoveUrlParameters:
     def test_remove_url_parameters(self):
-        assert remove_url_parameters("/adresse/test?ref=search&page=1") == "/adresse/test"
+        assert (
+            remove_url_parameters("/adresse/test?ref=search&page=1") == "/adresse/test"
+        )
         assert remove_url_parameters("/adresse/test") == "/adresse/test"
-        assert remove_url_parameters("https://example.com/path?q=1") == "https://example.com/path"
+        assert (
+            remove_url_parameters("https://example.com/path?q=1")
+            == "https://example.com/path"
+        )

@@ -9,7 +9,9 @@ from bs4 import BeautifulSoup, Comment
 from pydantic import HttpUrl, ValidationError
 
 
-def extract_adresse_urls(html_content: str, base_url: str = "https://www.boligsiden.dk") -> list[HttpUrl]:
+def extract_adresse_urls(
+    html_content: str, base_url: str = "https://www.boligsiden.dk"
+) -> list[HttpUrl]:
     """Parse HTML and return unique validated HttpUrl for /adresse/ links."""
     from xflats.utils import remove_url_parameters
 
@@ -92,9 +94,23 @@ def _preprocess_html(html: str) -> str:
         tag.decompose()
 
     for name in (
-        "script", "style", "meta", "link", "nav", "header", "footer",
-        "aside", "form", "input", "button", "select", "option", "textarea",
-        "canvas", "iframe", "noscript",
+        "script",
+        "style",
+        "meta",
+        "link",
+        "nav",
+        "header",
+        "footer",
+        "aside",
+        "form",
+        "input",
+        "button",
+        "select",
+        "option",
+        "textarea",
+        "canvas",
+        "iframe",
+        "noscript",
     ):
         for t in soup.find_all(name):
             t.decompose()
@@ -110,7 +126,9 @@ def _preprocess_html(html: str) -> str:
     return text
 
 
-def fetch_and_preprocess(url: str, timeout: float = 5.0, max_bytes: int = 10_000, mode: str = "two_requests") -> str | None:
+def fetch_and_preprocess(
+    url: str, timeout: float = 5.0, max_bytes: int = 10_000, mode: str = "two_requests"
+) -> str | None:
     """Fetch + preprocess a page. Returns cleaned text or None on 404."""
     not_found_markers = [
         '<html id="__next_error__">',

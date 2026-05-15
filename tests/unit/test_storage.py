@@ -45,11 +45,11 @@ class TestAddOffersToDb:
 class TestGetRecentOffers:
     def test_get_recent_offers(self, mock_chromadb_collection):
         mock_chromadb_collection.get.return_value = {
-            "metadatas": [
-                {"address": "Test", "number_of_rooms": 3, "subways": True}
-            ]
+            "metadatas": [{"address": "Test", "number_of_rooms": 3, "subways": True}]
         }
-        result = get_recent_offers(mock_chromadb_collection, cutoff_time=1699999000.0, number_of_rooms=2)
+        result = get_recent_offers(
+            mock_chromadb_collection, cutoff_time=1699999000.0, number_of_rooms=2
+        )
         assert len(result) == 1
         mock_chromadb_collection.get.assert_called_once()
         call_kwargs = mock_chromadb_collection.get.call_args

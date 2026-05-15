@@ -11,8 +11,10 @@ def geocode_address(address: str) -> tuple[float, float]:
     """Use OSM Nominatim to turn a street address into (lat, lon)."""
     url = "https://nominatim.openstreetmap.org/search"
     params: dict[str, str | int] = {"q": address, "format": "json", "limit": 1}
-    headers = {"User-Agent": "xflats/1.0 (github.com/xSzpo/xFlats-Intelligent-Real-Estate-Assistant)"}
-    resp = requests.get(url, params=params, headers=headers)
+    headers = {
+        "User-Agent": "xflats/1.0 (github.com/xSzpo/xFlats-Intelligent-Real-Estate-Assistant)"
+    }
+    resp = requests.get(url, params=params, headers=headers, timeout=10)
     resp.raise_for_status()
     results = resp.json()
     if not results:
@@ -31,7 +33,7 @@ def get_public_transport_stations(
         lat, lon = geocode_address(address)
 
     if lat is None or lon is None:
-        raise ValueError("Must supply either an address or both lat and lon")
+        raise ValueError("Either 'address' or both 'lat' and 'lon' must be provided.")
 
     overpass_url = "http://overpass-api.de/api/interpreter"
     query = f"""

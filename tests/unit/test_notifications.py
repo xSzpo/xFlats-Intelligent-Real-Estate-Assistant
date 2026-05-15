@@ -31,7 +31,9 @@ class TestCreateOfferText:
 class TestSendTelegramNotifications:
     @patch("xflats.notifications.telegram.requests.post")
     @patch("xflats.notifications.telegram.get_price_point")
-    def test_send_telegram_notifications(self, mock_price_point, mock_post, sample_offer):
+    def test_send_telegram_notifications(
+        self, mock_price_point, mock_post, sample_offer
+    ):
         mock_price_point.return_value = 1.05
         mock_post.return_value = MagicMock(status_code=200)
 

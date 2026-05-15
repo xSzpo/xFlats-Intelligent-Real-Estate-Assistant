@@ -51,6 +51,12 @@ GIT_SSH_COMMAND="ssh -i ~/.ssh/id_rsa_priv" git push
 ### SSH / Git
 This is a **private repo** using `github.com-priv` SSH host alias. Remote URL: `git@github.com-priv:xSzpo/xFlats-Intelligent-Real-Estate-Assistant.git`. For `gh` CLI operations, use `--repo xSzpo/xFlats-Intelligent-Real-Estate-Assistant`.
 
+**Always pull main before branching:**
+```bash
+GIT_SSH_COMMAND="ssh -i ~/.ssh/id_rsa_priv" git fetch origin main
+git checkout main && git merge origin/main
+```
+
 ---
 
 ## Persona Selection — Decide Once

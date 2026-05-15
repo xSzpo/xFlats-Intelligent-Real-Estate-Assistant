@@ -71,6 +71,7 @@ EXAMPLE_TEXT = """
 
 class Offers(BaseModel):
     """Pydantic model for property offer data."""
+
     address: str
     description: str
     floor: str | None = None
@@ -85,6 +86,7 @@ class Offers(BaseModel):
 
 class ListOfOffers(BaseModel):
     """Container for multiple property offers."""
+
     offers: list[Offers]
 
 
