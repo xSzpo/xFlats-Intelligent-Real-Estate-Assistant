@@ -25,6 +25,13 @@ gh pr diff <N> --repo xSzpo/xFlats-Intelligent-Real-Estate-Assistant
 Review changes by type:
 
 **Python code** (`src/xflats/**/*.py`, `tests/**/*.py`):
+- **Google Python Style Guide consistency** — always check:
+  - Google-style docstrings on all public functions/classes ([3.8](https://google.github.io/styleguide/pyguide.html#38-comments-and-docstrings))
+  - Full type annotations on args + return ([2.21](https://google.github.io/styleguide/pyguide.html#221-type-annotated-code))
+  - `logging` module instead of `print()` ([2.9](https://google.github.io/styleguide/pyguide.html#29-deprecated-language-features))
+  - Specific exception types, not bare `except Exception` ([2.4](https://google.github.io/styleguide/pyguide.html#24-exceptions))
+  - `# TODO(username): description` format ([3.12](https://google.github.io/styleguide/pyguide.html#312-todo-comments))
+  - snake_case / CamelCase naming conventions ([3.16](https://google.github.io/styleguide/pyguide.html#316-naming))
 - Type safety (Pydantic models correct?)
 - Error handling (API calls, network, parsing)
 - Secret handling (no hardcoded keys)

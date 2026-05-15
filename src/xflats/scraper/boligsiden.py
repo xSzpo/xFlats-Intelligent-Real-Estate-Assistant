@@ -1,5 +1,6 @@
 """Scraping logic for boligsiden.dk listings."""
 
+import logging
 import re
 from urllib.parse import urljoin, urlparse
 from urllib.request import urlopen
@@ -8,11 +9,21 @@ import requests
 from bs4 import BeautifulSoup, Comment
 from pydantic import HttpUrl, ValidationError
 
+logger = logging.getLogger(__name__)
+
 
 def extract_adresse_urls(
     html_content: str, base_url: str = "https://www.boligsiden.dk"
 ) -> list[HttpUrl]:
-    """Parse HTML and return unique validated HttpUrl for /adresse/ links."""
+    """Parse HTML and return unique validated HttpUrl for ``/adresse/`` links.
+
+    Args:
+        html_content: Raw HTML string to parse.
+        base_url: Base URL used to resolve relative paths.
+
+    Returns:
+        List of validated ``HttpUrl`` objects for unique adresse links.
+    """
     from xflats.utils import remove_url_parameters
 
     soup = BeautifulSoup(html_content, "html.parser")
@@ -31,6 +42,18 @@ def extract_adresse_urls(
 
 
 def check_crawl_permission(target_page: str) -> bool:
+    """Check whether crawling is allowed for a URL per its robots.txt.
+
+    Parses the ``robots.txt`` for the wildcard user-agent and evaluates
+    allow/disallow rules using longest-match semantics.
+
+    Args:
+        target_page: Fully-qualified URL to check.
+
+    Returns:
+        ``True`` if crawling is permitted (or robots.txt is unreachable),
+        ``False`` otherwise.
+    """
     parsed = urlparse(target_page)
     base_url = f"{parsed.scheme}://{parsed.netloc}"
     path = parsed.path or "/"
@@ -39,8 +62,8 @@ def check_crawl_permission(target_page: str) -> bool:
     try:
         with urlopen(robots_url, timeout=5) as response:
             robots_content = response.read().decode("utf-8", errors="ignore")
-    except Exception as e:
-        print(f"Error fetching {robots_url}: {e}")
+    except OSError as e:
+        logger.warning("Error fetching %s: %s", robots_url, e)
         return True
 
     rules: list[tuple[str, str]] = []
@@ -74,13 +97,34 @@ def check_crawl_permission(target_page: str) -> bool:
 
 
 def fetch_html(url: str) -> str:
+    """Fetch a page and return its raw HTML.
+
+    Args:
+        url: URL to fetch.
+
+    Returns:
+        Raw HTML content as a string.
+
+    Raises:
+        requests.HTTPError: If the response status code indicates an error.
+    """
     response = requests.get(url, timeout=10)
     response.raise_for_status()
     return response.text
 
 
 def _preprocess_html(html: str) -> str:
-    """Core HTML cleanup: strip head, remove noise tags, keep JSON-LD, strip attrs, collapse whitespace."""
+    """Clean raw HTML for downstream text extraction.
+
+    Strips ``<head>``, comments, noise tags (nav, footer, scripts, etc.),
+    preserves JSON-LD blocks, removes all attributes, and collapses whitespace.
+
+    Args:
+        html: Raw HTML string.
+
+    Returns:
+        Cleaned plain-text string with JSON-LD blocks prepended.
+    """
     soup = BeautifulSoup(html, "html.parser")
     if soup.head:
         soup.head.decompose()
@@ -129,7 +173,24 @@ def _preprocess_html(html: str) -> str:
 def fetch_and_preprocess(
     url: str, timeout: float = 5.0, max_bytes: int = 10_000, mode: str = "two_requests"
 ) -> str | None:
-    """Fetch + preprocess a page. Returns cleaned text or None on 404."""
+    """Fetch and preprocess a page, returning cleaned text.
+
+    Supports two modes: ``two_requests`` (peek first, then full fetch) and
+    ``single_request`` (stream everything in one pass). Returns ``None`` for
+    404-like responses or network errors.
+
+    Args:
+        url: URL to fetch.
+        timeout: Request timeout in seconds.
+        max_bytes: Max bytes to read in the peek request (``two_requests`` mode).
+        mode: Either ``'two_requests'`` or ``'single_request'``.
+
+    Returns:
+        Cleaned text string, or ``None`` if page is not found or unreachable.
+
+    Raises:
+        ValueError: If *mode* is not a recognised value.
+    """
     not_found_markers = [
         '<html id="__next_error__">',
         "NEXT_NOT_FOUND",

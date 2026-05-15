@@ -1,14 +1,27 @@
 """Telegram notification delivery."""
 
+import logging
 import re
 from typing import Any
 
+import chromadb
 import requests
 
 from xflats.storage.chromadb import get_price_point
 
+logger = logging.getLogger(__name__)
 
-def create_offer_text(offer_dict: dict) -> str:
+
+def create_offer_text(offer_dict: dict[str, Any]) -> str:
+    """Create formatted text for a single apartment offer.
+
+    Args:
+        offer_dict: Dictionary containing offer details such as address,
+            price, area, and public transport information.
+
+    Returns:
+        Formatted string with offer details ready for Telegram delivery.
+    """
     if offer_dict.get("subways", False):
         pattern = re.compile(r"(?<=subways:)([^;]+)(?=;)")
         subways = pattern.findall(offer_dict["public_transport_text"])
@@ -30,16 +43,23 @@ Url: {url}
 
 def send_telegram_notifications(
     offers: list[dict[str, Any]],
-    collection,
+    collection: chromadb.Collection,
     telegram_token: str,
     telegram_chat_id: str,
 ) -> None:
-    """Send offer notifications via Telegram."""
+    """Send offer notifications via Telegram.
+
+    Args:
+        offers: List of offer dictionaries containing apartment listing data.
+        collection: ChromaDB collection used for price point lookups.
+        telegram_token: Telegram Bot API token.
+        telegram_chat_id: Target Telegram chat ID for notifications.
+    """
     if not offers:
-        print("No apartment listings to share on Telegram")
+        logger.info("No apartment listings to share on Telegram")
         return
 
-    print(f"Sending {len(offers)} listings to Telegram")
+    logger.info("Sending %d listings to Telegram", len(offers))
 
     for offer in offers:
         offer["price_point"] = get_price_point(offer, collection)
@@ -48,7 +68,7 @@ def send_telegram_notifications(
 
     for offer in offers:
         offer_text = create_offer_text(offer)
-        print(f"Sending: {offer_text}")
+        logger.info("Sending: %s", offer_text)
 
         telegram_url = f"https://api.telegram.org/bot{telegram_token}/sendMessage"
         payload = {"chat_id": telegram_chat_id, "text": offer_text}
@@ -57,4 +77,4 @@ def send_telegram_notifications(
             response = requests.post(telegram_url, json=payload, timeout=10)
             response.raise_for_status()
         except requests.RequestException as e:
-            print(f"Failed to send Telegram message: {e}")
+            logger.error("Failed to send Telegram message: %s", e)

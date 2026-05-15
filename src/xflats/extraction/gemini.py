@@ -70,7 +70,20 @@ EXAMPLE_TEXT = """
 
 
 class Offers(BaseModel):
-    """Pydantic model for property offer data."""
+    """Pydantic model for a single property offer.
+
+    Attributes:
+        address: Street address in original language.
+        description: English-language description of the property.
+        floor: Floor number, if available.
+        price: Listing price in local currency as integer, or ``None``.
+        area_m2: Living area in square metres, or ``None``.
+        number_of_rooms: Total room count, or ``None``.
+        year_built: Construction year, or ``None``.
+        energy_label: Single uppercase letter energy rating, or ``None``.
+        balcony: Whether a balcony or terrace is present.
+        url: Full URL to the original listing.
+    """
 
     address: str
     description: str
@@ -85,16 +98,38 @@ class Offers(BaseModel):
 
 
 class ListOfOffers(BaseModel):
-    """Container for multiple property offers."""
+    """Container for multiple property offers.
+
+    Attributes:
+        offers: List of extracted property offers.
+    """
 
     offers: list[Offers]
 
 
 def is_retriable(e: Exception) -> bool:
+    """Determine whether a Gemini API error is retriable.
+
+    Args:
+        e: The exception raised during an API call.
+
+    Returns:
+        ``True`` if the error is a 429 or 503 API error, ``False`` otherwise.
+    """
     return isinstance(e, genai.errors.APIError) and e.code in {429, 503}
 
 
-def fix_json(json_result: str) -> list[dict]:
+def fix_json(json_result: str) -> list[dict[str, Any]]:
+    """Extract JSON objects from a malformed JSON string.
+
+    Falls back to regex extraction when the Gemini response is not valid JSON.
+
+    Args:
+        json_result: Raw string that may contain embedded JSON objects.
+
+    Returns:
+        A list of parsed dictionaries, one per matched JSON object.
+    """
     result = re.sub(r"(\n +)", "", json_result)
     pattern = r"(\{[^{}]+\})"
     matches = re.findall(pattern, result)
@@ -102,15 +137,39 @@ def fix_json(json_result: str) -> list[dict]:
 
 
 class GeminiEmbeddingFunction(EmbeddingFunction):
-    """Custom embedding function using Google's Gemini API."""
+    """Custom embedding function using Google's Gemini API.
 
-    def __init__(self, client: genai.Client, *args, **kwargs):
+    Wraps the Gemini ``text-embedding-004`` model for use with ChromaDB.
+    Toggle ``document_mode`` to switch between document and query embeddings.
+
+    Attributes:
+        client: Authenticated Gemini API client.
+        document_mode: When ``True`` (default), produces document embeddings;
+            when ``False``, produces query embeddings.
+    """
+
+    def __init__(self, client: genai.Client, *args: Any, **kwargs: Any) -> None:
+        """Initialise the embedding function.
+
+        Args:
+            client: An authenticated ``genai.Client`` instance.
+            *args: Positional arguments forwarded to the parent class.
+            **kwargs: Keyword arguments forwarded to the parent class.
+        """
         self.client = client
         self.document_mode = True
         super().__init__(*args, **kwargs)
 
     @retry.Retry(predicate=is_retriable)
     def __call__(self, input: Documents) -> Embeddings:
+        """Generate embeddings for the given documents or queries.
+
+        Args:
+            input: A list of text strings to embed.
+
+        Returns:
+            A list of embedding vectors, one per input string.
+        """
         task_type = "retrieval_document" if self.document_mode else "retrieval_query"
         response = self.client.models.embed_content(
             model="models/text-embedding-004",
@@ -123,7 +182,19 @@ class GeminiEmbeddingFunction(EmbeddingFunction):
 def process_offers_with_ai(
     client: genai.Client, offers_source: list[dict[str, str]]
 ) -> list[dict[str, Any]]:
-    """Process offer sources using Gemini AI to extract structured data."""
+    """Process offer sources using Gemini AI to extract structured data.
+
+    Sends cleaned HTML content to Gemini for structured extraction, falling
+    back to regex-based JSON parsing on malformed responses.
+
+    Args:
+        client: An authenticated ``genai.Client`` instance.
+        offers_source: List of dicts each containing ``url`` and ``text`` keys
+            representing a single property listing.
+
+    Returns:
+        A list of dictionaries, each containing extracted property fields.
+    """
     if not offers_source:
         return []
 

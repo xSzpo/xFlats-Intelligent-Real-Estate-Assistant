@@ -139,7 +139,7 @@ graph TD
         S3["S3<br/>Terraform state"]
 
         subgraph EC2
-            Docker["Docker Container<br/>python:3.11-slim + cron"]
+            Docker["Docker Container<br/>python:3.14-slim + cron"]
             ChromaDB["ChromaDB<br/>port 8000"]
         end
     end
@@ -160,7 +160,7 @@ AWS infrastructure layout.
 
 ### Docker
 
-- Base: `python:3.11-slim`
+- Base: `python:3.14-slim`
 - Deps installed via `uv sync --frozen --no-dev`
 - Cron runs `uv run python -m xflats.main` every 30 minutes
 - Logs to `/var/log/cron.log`
