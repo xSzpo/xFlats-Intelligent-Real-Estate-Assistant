@@ -115,6 +115,9 @@ Every Worker MUST return:
 ### Promotion
 Worker MUST promote to sub-Planner when task has multiple distinct concerns or scope expands.
 
+### Required file updates on mutations
+When a Worker changes source files, it MUST consult `doc-update-registry.yml` to check if any docs need updating. If adding new source directories or docs, update the registry itself.
+
 ---
 
 ## Safety Rules
