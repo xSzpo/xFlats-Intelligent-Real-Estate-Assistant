@@ -31,7 +31,7 @@ def setup_vector_database(
         The ChromaDB collection ready for queries and inserts.
     """
     logger.info("Initializing vector database...")
-    embed_fn.document_mode = True
+    embed_fn.document_mode = True  # type: ignore[attr-defined]
 
     if chromadb_ip:
         chroma_client = chromadb.HttpClient(
@@ -137,19 +137,24 @@ def get_price_point(
         ``0.0`` when no comparable prices are found.
     """
     now = datetime.now(timezone.utc)
-    emb_results = collection.query(
+    query_result = collection.query(
         include=["metadatas"],
-        where={"create_date": {"$gt": (now - timedelta(days=90)).timestamp()}},
+        where={"create_date": {"$gt": (now - timedelta(days=90)).timestamp()}},  # type: ignore[dict-item]
         query_texts=[offer_to_text(offer)],
         n_results=n_results,
-    )["metadatas"][0]
-    prices = [
+    )
+    metadatas = query_result.get("metadatas")
+    emb_results: list[Any] = metadatas[0] if metadatas else []
+    prices: list[float] = [
         item.get("price") for item in emb_results if item.get("price") is not None
     ]
     if not prices:
         return 0.0
     avg_price = statistics.mean(prices)
-    return offer.get("price") / avg_price if avg_price != 0 else 0.0
+    offer_price = offer.get("price")
+    if not offer_price or avg_price == 0:
+        return 0.0
+    return float(offer_price) / avg_price
 
 
 def get_similar_offers(
@@ -189,10 +194,10 @@ def get_recent_offers(
         include=["metadatas"],
         where={
             "$and": [
-                {"create_date": {"$gt": cutoff_time}},
-                {"subways": {"$eq": True}},
-                {"number_of_rooms": {"$gte": number_of_rooms}},
+                {"create_date": {"$gt": cutoff_time}},  # type: ignore[dict-item]
+                {"subways": {"$eq": True}},  # type: ignore[dict-item]
+                {"number_of_rooms": {"$gte": number_of_rooms}},  # type: ignore[dict-item]
             ]
         },
     )
-    return list(results.get("metadatas") or [])
+    return list(results.get("metadatas") or [])  # type: ignore[arg-type]

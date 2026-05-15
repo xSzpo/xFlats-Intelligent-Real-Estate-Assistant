@@ -32,7 +32,7 @@ def _get_client(profile_name: str | None = None) -> Any:
 
 def get_secret(
     secret_id: str, key: str | None = None, profile_name: str | None = None
-) -> str:
+) -> str | dict[str, Any]:
     """Retrieve a secret value from AWS Secrets Manager.
 
     Args:
@@ -49,13 +49,13 @@ def get_secret(
     """
     client = _get_client(profile_name)
     get_secret_value_response = client.get_secret_value(SecretId=secret_id)
-    secret = json.loads(get_secret_value_response["SecretString"])
+    secret: dict[str, Any] = json.loads(get_secret_value_response["SecretString"])
     if key:
         if key not in secret:
             raise KeyError(
                 f"Key {key!r} not found in secret {secret_id!r}. Available keys: {list(secret.keys())}"
             )
-        return secret[key]
+        return str(secret[key])
     return secret
 
 
@@ -68,26 +68,26 @@ class Config:
 
     def __init__(self) -> None:
         """Initialize configuration from environment variables and secrets."""
-        self.profile_name = os.getenv("AWS_PROFILE", None)
-        self.chromadb_ip = os.getenv("CHROMADB_IP", "chromadb")
-        self.number_of_pages_to_open = int(
+        self.profile_name: str | None = os.getenv("AWS_PROFILE", None)
+        self.chromadb_ip: str = os.getenv("CHROMADB_IP", "chromadb")
+        self.number_of_pages_to_open: int = int(
             os.getenv("NUMBER_OF_PAGES_TO_OPEN", DEFAULT_PAGES_TO_OPEN)
         )
-        self.number_of_rooms = int(
+        self.number_of_rooms: int = int(
             os.getenv("NUMBER_OF_ROOMS", DEFAULT_NUMBER_OF_ROOMS)
         )
-        self.telegram_token = get_secret(
+        self.telegram_token: str = str(get_secret(
             secret_id="telegram-274181059559",
             key="TOKEN",
             profile_name=self.profile_name,
-        )
-        self.telegram_chat_id = get_secret(
+        ))
+        self.telegram_chat_id: str = str(get_secret(
             secret_id="telegram-274181059559",
             key="CHAT_ID",
             profile_name=self.profile_name,
-        )
-        self.genai_api_key = get_secret(
+        ))
+        self.genai_api_key: str = str(get_secret(
             secret_id="gemini-274181059559",
             key="GOOGLE_API_KEY",
             profile_name=self.profile_name,
-        )
+        ))
