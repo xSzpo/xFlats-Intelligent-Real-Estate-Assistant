@@ -168,6 +168,7 @@ Project-local skills live at `.agents/skills/{name}/SKILL.md`. Global skills fro
 - **pr-create** — Create PRs with consistent format
 - **pr-review** — Structured inline code review
 - **pr-address-comments** — Address PR review feedback
+- **terraform-ops** — How to run Terraform in this repo (AWS profile, module order, pitfalls)
 
 ### Global skills (available)
 - **prd-to-issues** — Break PRD into GitHub issues
