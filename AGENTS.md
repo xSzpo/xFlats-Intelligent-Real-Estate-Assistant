@@ -162,6 +162,7 @@ Project-local skills live at `.agents/skills/{name}/SKILL.md`. Global skills fro
 
 ### Project-local skills
 - **implement-github-issue** — End-to-end GitHub issue implementation with plan doc
+- **pr-create** — Create PRs with consistent format
 - **pr-review** — Structured inline code review
 - **pr-address-comments** — Address PR review feedback
 
