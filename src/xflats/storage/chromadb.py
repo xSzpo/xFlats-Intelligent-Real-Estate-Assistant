@@ -36,14 +36,14 @@ def add_offers_to_db(
     batch_size: int = 100,
 ):
     documents = [offer_to_text(offer) for offer in offers]
-    ids = [offer.get("id") for offer in offers]
+    ids = [str(offer.get("id", "")) for offer in offers]
     metadatas = offers
 
     for i in range(0, len(documents), batch_size):
         batch_docs = documents[i : i + batch_size]
         batch_meta = metadatas[i : i + batch_size]
         batch_ids = ids[i : i + batch_size]
-        collection.add(documents=batch_docs, metadatas=batch_meta, ids=batch_ids)
+        collection.add(documents=batch_docs, metadatas=batch_meta, ids=batch_ids)  # type: ignore[arg-type]
         print(f"Added batch {i // batch_size + 1} with {len(batch_docs)} documents.")
 
 
@@ -93,4 +93,4 @@ def get_recent_offers(collection, cutoff_time: float, number_of_rooms: int) -> l
             ]
         },
     )
-    return results.get("metadatas", [])
+    return list(results.get("metadatas") or [])

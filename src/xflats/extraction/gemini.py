@@ -146,9 +146,9 @@ def process_offers_with_ai(
     try:
         parsed = json.loads(response.text)
         if isinstance(parsed, dict) and "offers" in parsed:
-            return parsed["offers"]
+            return list(parsed["offers"])
         if isinstance(parsed, list):
-            return parsed
+            return list(parsed)
     except json.JSONDecodeError:
         pass
 

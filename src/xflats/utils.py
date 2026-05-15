@@ -1,5 +1,7 @@
 """Shared utility functions."""
 
+from __future__ import annotations
+
 import time
 
 import requests
@@ -8,7 +10,7 @@ import requests
 def geocode_address(address: str) -> tuple[float, float]:
     """Use OSM Nominatim to turn a street address into (lat, lon)."""
     url = "https://nominatim.openstreetmap.org/search"
-    params = {"q": address, "format": "json", "limit": 1}
+    params: dict[str, str | int] = {"q": address, "format": "json", "limit": 1}
     headers = {"User-Agent": "xflats/1.0 (github.com/xSzpo/xFlats-Intelligent-Real-Estate-Assistant)"}
     resp = requests.get(url, params=params, headers=headers)
     resp.raise_for_status()
@@ -19,12 +21,12 @@ def geocode_address(address: str) -> tuple[float, float]:
 
 
 def get_public_transport_stations(
-    lat: float = None,
-    lon: float = None,
-    address: str = None,
+    lat: float | None = None,
+    lon: float | None = None,
+    address: str | None = None,
     radius: int = 700,
     max_retries: int = 5,
-) -> dict:
+) -> dict[str, bool | str]:
     if address is not None:
         lat, lon = geocode_address(address)
 
@@ -57,7 +59,7 @@ def get_public_transport_stations(
             response.raise_for_status()
             data = response.json()
 
-            stations = {key: [] for key in station_types}
+            stations: dict[str, list[str]] = {key: [] for key in station_types}
             for element in data["elements"]:
                 tags = element.get("tags", {})
                 station_tag = (
@@ -71,18 +73,19 @@ def get_public_transport_stations(
                         if station_tag == value:
                             stations[key].append(name)
 
+            result: dict[str, bool | str] = {}
             public_transport_text = ""
             for key in stations:
                 if stations[key]:
                     public_transport_text += (
                         "; ".join(f"{key}:{i}" for i in set(stations[key])) + "; "
                     )
-                    stations[key] = True
+                    result[key] = True
                 else:
-                    stations[key] = False
+                    result[key] = False
 
-            stations["public_transport_text"] = public_transport_text
-            return stations
+            result["public_transport_text"] = public_transport_text
+            return result
 
         except requests.exceptions.RequestException as e:
             print(f"Attempt {attempt + 1}/{max_retries} failed: {e}")
@@ -99,6 +102,15 @@ def get_public_transport_stations(
                     "trains": False,
                     "public_transport_text": "",
                 }
+
+    return {
+        "ferry_terminals": False,
+        "light_rails": False,
+        "subways": False,
+        "bus_stations": False,
+        "trains": False,
+        "public_transport_text": "",
+    }
 
 
 def remove_url_parameters(url: str) -> str:
