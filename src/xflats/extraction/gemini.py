@@ -19,7 +19,7 @@ You are an expert in extracting apartment listings from cleaned HTML text. Your 
 
 Please follow these instructions **precisely**:
 
-1. **Translate all text to English**, except for the **Address**, which must remain in its original language.
+1. **Translate all text to English**, except for the **Address**, which must remain in its original language{region_instruction}.
 2. **Description**: in English, craft a neutral, informative overview covering:
   - Flat layout and standout positives/negatives
   - Natural light (e.g. "bright, east-facing")
@@ -28,7 +28,7 @@ Please follow these instructions **precisely**:
   - Neighborhood vibe (e.g. "quiet residential", "central and well-connected")
 3. **Address**: Extract in this format: `Street Name Number, PostalCode City, Country`
    - Do NOT include unit/floor/apartment numbers in the address
-4. **Price**: Extract as an integer, no commas or currency signs (e.g., `3250000`). If missing, use `null`.
+{rent_instruction}4. **Price**: Extract as an integer, no commas or currency signs (e.g., `3250000`). If missing, use `null`.
 5. **Area (m2)**: Extract as an integer (e.g., `87`). If missing, use `null`.
 6. **Number of Rooms**: Extract total number of rooms as an integer. If missing, use `null`.
 7. **Year Built**: Extract the year the building was constructed (e.g., `2006`). If missing, use `null`.

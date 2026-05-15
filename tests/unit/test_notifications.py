@@ -8,7 +8,7 @@ from xflats.notifications.telegram import create_offer_text, send_telegram_notif
 class TestCreateOfferText:
     def test_create_offer_text(self, sample_offer):
         sample_offer["price_point"] = 1.05
-        text = create_offer_text(sample_offer)
+        text = create_offer_text(sample_offer, currency="DKK")
         assert "Vesterbrogade 42" in text
         assert "3,250,000 DKK" in text
         assert "Rooms: 3" in text
@@ -17,14 +17,14 @@ class TestCreateOfferText:
 
     def test_create_offer_text_with_subway(self, sample_offer):
         sample_offer["price_point"] = 0.95
-        text = create_offer_text(sample_offer)
+        text = create_offer_text(sample_offer, currency="DKK")
         assert "Enghave Plads" in text
         assert "Vesterport" in text
 
     def test_create_offer_text_no_subway(self, sample_offer):
         sample_offer["subways"] = False
         sample_offer["price_point"] = 1.0
-        text = create_offer_text(sample_offer)
+        text = create_offer_text(sample_offer, currency="DKK")
         assert "Subway(s):" not in text
 
 
@@ -43,6 +43,7 @@ class TestSendTelegramNotifications:
             collection=collection,
             telegram_token="fake-token",
             telegram_chat_id="12345",
+            currency="DKK",
         )
 
         mock_post.assert_called_once()
@@ -60,5 +61,6 @@ class TestSendTelegramNotifications:
             collection=collection,
             telegram_token="fake-token",
             telegram_chat_id="12345",
+            currency="DKK",
         )
         mock_post.assert_not_called()

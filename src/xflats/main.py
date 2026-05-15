@@ -62,27 +62,25 @@ def _build_prompt_template(region: RegionConfig) -> str:
     Returns:
         A prompt template string with ``{html_content}`` placeholder.
     """
-    lang_note = ""
+    region_instruction = ""
     if region.country == "Polska":
-        lang_note = " (keep in Polish)"
+        region_instruction = " (keep in Polish)"
 
-    prompt = PROMPT_TEMPLATE.replace(
-        "except for the **Address**, which must remain in its original language.",
-        f"except for the **Address**, which must remain in its original language{lang_note}.",
-    )
-
+    rent_instruction = ""
     if region.prompt_rent_example is not None:
         rent_instruction = (
             "5. **Rent** (Czynsz): Extract monthly rent/maintenance fee "
             f"as integer in {region.currency} (e.g., "
             f"`{region.prompt_rent_example}`). If missing, use `null`.\n"
         )
-        prompt = prompt.replace(
-            "4. **Price**:",
-            f"{rent_instruction}4. **Price**:",
-        )
 
-    return prompt
+    return PROMPT_TEMPLATE.format_map(
+        {
+            "html_content": "{html_content}",
+            "region_instruction": region_instruction,
+            "rent_instruction": rent_instruction,
+        }
+    )
 
 
 def _build_example_text(region: RegionConfig) -> str:

@@ -10,6 +10,8 @@ from xflats.config.regions import BROWSER_HEADERS
 
 logger = logging.getLogger(__name__)
 
+BASE_URL = "https://www.otodom.pl"
+
 
 def extract_otodom_urls(html_content: str) -> list[str]:
     """Parse otodom.pl search results HTML and extract listing URLs.
@@ -35,15 +37,21 @@ def extract_otodom_urls(html_content: str) -> list[str]:
     urls: list[str] = []
 
     for selector in link_selectors:
-        for link in soup.select(selector):
+        matches = soup.select(selector)
+        if not matches and "css-" in selector:
+            logger.warning(
+                "CSS selector %r matched zero elements — class name may have changed",
+                selector,
+            )
+        for link in matches:
             href = str(link.get("href", ""))
             if not href or "/pl/oferta/" not in href:
                 continue
 
             if href.startswith("/"):
-                href = f"https://www.otodom.pl{href}"
+                href = f"{BASE_URL}{href}"
             elif not href.startswith("http"):
-                href = f"https://www.otodom.pl/{href}"
+                href = f"{BASE_URL}/{href}"
 
             # Strip query parameters.
             if "?" in href:

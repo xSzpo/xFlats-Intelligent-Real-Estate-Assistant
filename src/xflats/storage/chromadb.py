@@ -7,6 +7,8 @@ from typing import Any
 
 import chromadb
 
+from xflats.utils import filter_none_metadata
+
 logger = logging.getLogger(__name__)
 
 CHROMADB_DEFAULT_PORT = 8000
@@ -81,7 +83,7 @@ def add_offers_to_db(
     """
     documents = [offer_to_text(offer) for offer in offers]
     ids = [str(offer.get("id", "")) for offer in offers]
-    metadatas = [{k: v for k, v in offer.items() if v is not None} for offer in offers]
+    metadatas = filter_none_metadata(offers)
 
     for i in range(0, len(documents), batch_size):
         batch_docs = documents[i : i + batch_size]

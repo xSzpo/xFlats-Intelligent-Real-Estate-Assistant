@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 def create_offer_text(
     offer_dict: dict[str, Any],
-    currency: str = "DKK",
+    currency: str,
 ) -> str:
     """Create formatted text for a single apartment offer.
 
@@ -62,7 +62,7 @@ def send_telegram_notifications(
     collection: chromadb.Collection,
     telegram_token: str,
     telegram_chat_id: str,
-    currency: str = "DKK",
+    currency: str,
 ) -> None:
     """Send offer notifications via Telegram.
 

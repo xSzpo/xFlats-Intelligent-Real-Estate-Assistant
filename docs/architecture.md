@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-xFlats is an automated real estate monitoring system for Copenhagen. Every 30 minutes a cron-triggered Docker container scrapes property listings from boligsiden.dk, extracts structured data via Google Gemini AI, stores listings with embeddings in ChromaDB for deduplication and similarity search, enriches them with geocoding and public transport data, then sends matching new listings as Telegram notifications with a relative price indicator.
+xFlats is an automated real estate monitoring system for Copenhagen and Warsaw. Every 30 minutes a cron-triggered Docker container scrapes property listings from boligsiden.dk (Copenhagen) and otodom.pl (Warsaw), extracts structured data via Google Gemini AI, stores listings with embeddings in ChromaDB (one collection per region) for deduplication and similarity search, enriches them with geocoding and public transport data, then sends matching new listings as Telegram notifications with a relative price indicator. Region-specific behaviour (site, URLs, AI models, notification preferences) is driven by a `RegionConfig` data class in `config/regions.py`.
 
 ## 2. System Architecture
 
@@ -11,7 +11,9 @@ graph LR
     subgraph "Docker Container (EC2)"
         Cron["Cron (*/30 min)"]
         Main["RealEstateScraper"]
-        Scraper["scraper.boligsiden"]
+        Scraper_BS["scraper.boligsiden"]
+        Scraper_OT["scraper.otodom"]
+        Regions["config.regions"]
         Gemini["extraction.gemini"]
         Utils["utils"]
         Notify["notifications.telegram"]
@@ -19,6 +21,7 @@ graph LR
     end
 
     Boligsiden["boligsiden.dk"]
+    Otodom["otodom.pl"]
     GeminiAPI["Google Gemini API"]
     ChromaDB["ChromaDB (EC2:8000)"]
     Nominatim["OSM Nominatim"]
@@ -27,13 +30,16 @@ graph LR
     AWS_SM["AWS Secrets Manager"]
 
     Cron -->|triggers| Main
-    Main --> Scraper
+    Main --> Scraper_BS
+    Main --> Scraper_OT
+    Main --> Regions
     Main --> Gemini
     Main --> Utils
     Main --> Notify
     Main --> Secrets
 
-    Scraper -->|HTTP GET| Boligsiden
+    Scraper_BS -->|HTTP GET| Boligsiden
+    Scraper_OT -->|HTTP GET| Otodom
     Gemini -->|structured extraction| GeminiAPI
     Gemini -->|embeddings| GeminiAPI
     Main -->|read/write| ChromaDB
@@ -50,7 +56,9 @@ High-level component and external service dependency map.
 | Module | Responsibility | Key Functions / Classes | Dependencies |
 |--------|---------------|------------------------|--------------|
 | `main.py` | Orchestration — scrape, extract, store, notify | `RealEstateScraper`, `run()`, `scrape_historical_listings()` | All modules below |
-| `scraper.boligsiden` | HTML fetching + parsing from boligsiden.dk | `fetch_html()`, `fetch_and_preprocess()`, `extract_adresse_urls()`, `check_crawl_permission()` | requests, BeautifulSoup, pydantic |
+| `scraper.boligsiden` | HTML fetching + parsing from boligsiden.dk (Copenhagen) | `fetch_html()`, `fetch_and_preprocess()`, `extract_adresse_urls()`, `check_crawl_permission()` | requests, BeautifulSoup, pydantic |
+| `scraper.otodom` | HTML fetching + parsing from otodom.pl (Warsaw) | `fetch_html()`, `extract_otodom_urls()` | requests, BeautifulSoup, config.regions |
+| `config.regions` | Multi-region configuration | `RegionConfig`, `get_region_config()`, `WAW_CONFIG`, `CPH_CONFIG` | — |
 | `extraction.gemini` | AI structured extraction + embeddings | `process_offers_with_ai()`, `GeminiEmbeddingFunction`, `Offers` model | google-genai, chromadb, pydantic |
 | `storage.chromadb` | Vector DB operations — store, query, dedup | `setup_vector_database()`, `add_offers_to_db()`, `get_recent_offers()`, `get_price_point()` | chromadb |
 | `notifications.telegram` | Format + send Telegram messages | `send_telegram_notifications()`, `create_offer_text()` | requests, storage.chromadb |
@@ -64,7 +72,7 @@ sequenceDiagram
     participant Cron
     participant Main as RealEstateScraper
     participant SM as AWS Secrets Manager
-    participant BS as boligsiden.dk
+    participant BS as boligsiden.dk / otodom.pl
     participant CDB as ChromaDB
     participant Gem as Gemini API
     participant Nom as Nominatim
@@ -118,7 +126,7 @@ Step-by-step data flow from cron trigger through scraping, extraction, enrichmen
 1. **Cron fires** — `*/30 * * * *` runs `python -m xflats.main`
 2. **Config loads** — `Config()` pulls secrets from AWS Secrets Manager (Telegram token, Gemini API key)
 3. **ChromaDB connects** — `setup_vector_database()` to EC2-hosted ChromaDB on port 8000
-4. **Page scraping** — For each page, fetch listing HTML, extract `/adresse/` URLs
+4. **Page scraping** — For each region, fetch listing HTML from the configured site (boligsiden.dk or otodom.pl), extract listing URLs
 5. **Dedup check** — Hash each URL (`shake_128`), skip if already in ChromaDB
 6. **HTML fetch + preprocess** — Two-request strategy: first 10KB to detect 404, then full fetch. Strip nav/scripts/styles, keep JSON-LD
 7. **AI extraction** — Batch send cleaned HTMLs to `gemini-2.0-flash` with structured output schema (`ListOfOffers`). Temp=0.1
@@ -169,6 +177,19 @@ AWS infrastructure layout.
 
 ```mermaid
 erDiagram
+    RegionConfig {
+        string name "e.g. waw, cph"
+        string display_name "e.g. Warsaw, Copenhagen"
+        string site "otodom or boligsiden"
+        list urls "search URLs to scrape"
+        string collection_name "ChromaDB collection"
+        string currency "PLN or DKK"
+        string gemini_model "extraction model"
+        string embedding_model "embedding model"
+        int batch_size "listings per API call"
+        string fetch_mode "two_requests or single_request"
+    }
+
     Offers {
         string address
         string description
@@ -206,6 +227,7 @@ Key data models and their relationship.
 
 | Model | Location | Purpose |
 |-------|----------|---------|
+| `RegionConfig` | `config/regions.py` | Per-region settings — site, URLs, AI models, secrets, notification prefs |
 | `Offers` | `extraction/gemini.py` | Pydantic model — Gemini structured output schema |
 | `ListOfOffers` | `extraction/gemini.py` | Wrapper for batch extraction response |
 | `Config` | `config/secrets.py` | App configuration — env vars + AWS secrets |
@@ -230,7 +252,8 @@ Key data models and their relationship.
 | **Gemini 2.0 Flash for extraction** | Fast, cheap, supports structured JSON output with Pydantic schema enforcement. Temp=0.1 for determinism |
 | **Gemini text-embedding-004** | Native integration with extraction client. Single API key for both tasks |
 | **ChromaDB** | Lightweight vector DB, easy self-hosting on EC2. Supports metadata filtering + semantic similarity for price comparison |
-| **Cron (every 30 min) vs event-driven** | No webhook available from boligsiden.dk. Polling is the only option. 30-min interval balances freshness vs API costs |
+| **Cron (every 30 min) vs event-driven** | No webhook available from boligsiden.dk or otodom.pl. Polling is the only option. 30-min interval balances freshness vs API costs |
+| **Multi-region via `RegionConfig`** | Single data class captures all per-region settings (site, URLs, models, secrets, notification prefs). Adding a new city means adding one config instance — no code branching needed |
 | **Two-request fetch strategy** | First request reads 10KB to detect 404/not-found pages cheaply. Avoids full-page download for dead listings |
 | **URL hashing for dedup** | `shake_128` of clean URL as ChromaDB document ID. Simple, deterministic, collision-resistant |
 | **Price point as ratio** | Relative metric (offer price / avg of 5 similar). Immediately shows if listing is above or below market |
