@@ -6,15 +6,19 @@
 
 ## Table of Contents
 
-1. [Overview](#overview)
-2. [Features](#features)
-3. [Architecture](#architecture)
-4. [Tech Stack](#tech-stack)
-5. [Project Structure](#project-structure)
-6. [Getting Started](#getting-started)
-7. [Development](#development)
-8. [CI/CD](#cicd)
-9. [Infrastructure](#infrastructure)
+- [xFlats AI Agent](#xflats-ai-agent)
+  - [Table of Contents](#table-of-contents)
+  - [Overview](#overview)
+  - [Features](#features)
+  - [Architecture](#architecture)
+  - [Tech Stack](#tech-stack)
+  - [Project Structure](#project-structure)
+  - [Getting Started](#getting-started)
+    - [Prerequisites](#prerequisites)
+    - [Setup](#setup)
+  - [Development](#development)
+  - [CI/CD](#cicd)
+  - [Infrastructure](#infrastructure)
 
 ---
 
@@ -52,14 +56,14 @@ Finding a great apartment in Copenhagen or Warsaw can be a race against time. xF
 ## Architecture
 
 ```text
-┌─────────────────────────────────────────────────────┐
+┌─────────────────-────────────────────────────────────┐
 │                   EC2 Instance                       │
 │                                                      │
-│  ┌────────────┐    ┌─────────────┐    ┌───────────┐ │
+│  ┌────────────-┐    ┌─────────────┐    ┌───────────┐ │
 │  │ Docker Cron │───▶│  Scrapers   │───▶│  Gemini   │ │
 │  │ (30 min)    │    │ boligsiden  │    │ Extraction│ │
-│  └────────────┘    │ otodom      │    └─────┬─────┘ │
-│                    └─────────────┘          │       │
+│  └────────────-┘    │ otodom      │    └─────┬─────┘ │
+│                     └─────────────┘          │       │
 │                                              │       │
 │                                              ▼       │
 │                    ┌─────────────┐    ┌───────────┐  │
